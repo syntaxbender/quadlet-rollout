@@ -9,6 +9,9 @@ ContainerName=quadlet-webhook
 PublishPort=8443:8080
 Environment=SALT_SECRET=replace_me
 Environment=VERSION_FILE=/data/global_version
+Environment=TZ=UTC
+Environment=CLOCK_SKEW_MINUTES=0
+Environment=MAX_HEADER_VALUE_LEN=128
 Volume=/opt/quadlet-rollout:/data:Z
 NoNewPrivileges=true
 ReadOnly=true

@@ -6,6 +6,8 @@ on:
 jobs:
   build_push_and_notify:
     runs-on: ubuntu-latest
+    env:
+      TZ: UTC
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +28,8 @@ jobs:
           MINUTE=$(date -u +%M)
           MINUTE_WINDOW=$((10 * (10#$MINUTE / 10)))
           TIME_WINDOW="$YEAR-$MONTH-$DAY $HOUR:$(printf "%02d" "$MINUTE_WINDOW")"
-          TOKEN=$(printf "%s" "$TIME_WINDOW" | openssl dgst -sha256 -hmac "$SALT_SECRET" -binary | xxd -p -c 256)
+          PAYLOAD="$TIME_WINDOW"$'\n'"${GITHUB_SHA,,}"
+          TOKEN=$(printf "%s" "$PAYLOAD" | openssl dgst -sha256 -hmac "$SALT_SECRET" -binary | xxd -p -c 256)
           echo "DEPLOY_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
       - name: Notify webhook
