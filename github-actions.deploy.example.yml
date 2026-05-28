@@ -1,0 +1,38 @@
+name: build-and-deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build_push_and_notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: echo "build placeholder"
+
+      - name: Push image
+        run: echo "push placeholder"
+
+      - name: Derive 10-minute HMAC token
+        env:
+          SALT_SECRET: ${{ secrets.DEPLOY_SALT_SECRET }}
+        run: |
+          YEAR=$(date -u +%Y)
+          MONTH=$(date -u +%m)
+          DAY=$(date -u +%d)
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+          MINUTE_WINDOW=$((10 * (10#$MINUTE / 10)))
+          TIME_WINDOW="$YEAR-$MONTH-$DAY $HOUR:$(printf "%02d" "$MINUTE_WINDOW")"
+          TOKEN=$(printf "%s" "$TIME_WINDOW" | openssl dgst -sha256 -hmac "$SALT_SECRET" -binary | xxd -p -c 256)
+          echo "DEPLOY_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Notify webhook
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+        run: |
+          curl -fsS -X POST "$DEPLOY_URL/deploy" \
+            -H "X-Deploy-Token: $DEPLOY_TOKEN" \
+            -H "X-Deploy-Sha: $GITHUB_SHA"

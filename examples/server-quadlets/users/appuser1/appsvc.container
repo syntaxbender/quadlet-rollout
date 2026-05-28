@@ -1,0 +1,14 @@
+[Unit]
+Description=App Service 1
+After=network-online.target
+
+[Container]
+Image=ghcr.io/org/appsvc:latest
+ContainerName=appsvc
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

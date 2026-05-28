@@ -1,0 +1,22 @@
+[Unit]
+Description=Quadlet Deploy Webhook
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/org/quadlet-webhook:latest
+ContainerName=quadlet-webhook
+PublishPort=8443:8080
+Environment=SALT_SECRET=replace_me
+Environment=VERSION_FILE=/data/global_version
+Volume=/opt/quadlet-rollout:/data:Z
+NoNewPrivileges=true
+ReadOnly=true
+ReadWritePaths=/data
+
+[Service]
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

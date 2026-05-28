@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Quadlet Agent Periodically
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+RandomizedDelaySec=15s
+Persistent=true
+Unit=quadlet-agent.service
+
+[Install]
+WantedBy=timers.target

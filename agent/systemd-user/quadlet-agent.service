@@ -1,0 +1,11 @@
+[Unit]
+Description=Quadlet User Deploy Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/quadlet-agent.sh
+
+[Install]
+WantedBy=default.target
