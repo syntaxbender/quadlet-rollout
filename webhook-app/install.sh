@@ -239,7 +239,16 @@ write_webhook_quadlet() {
     die "Unit oluşturulamadı: $WEBHOOK_SERVICE_NAME"
   fi
 
-  systemctl enable --now "$WEBHOOK_SERVICE_NAME"
+  if systemctl is-active --quiet "$WEBHOOK_SERVICE_NAME"; then
+    systemctl restart "$WEBHOOK_SERVICE_NAME"
+  else
+    systemctl start "$WEBHOOK_SERVICE_NAME"
+  fi
+
+  # Quadlet units are generated/transient; do not call "systemctl enable" on *.service.
+  if ! systemctl is-active --quiet "$WEBHOOK_SERVICE_NAME"; then
+    die "Webhook service aktif değil: $WEBHOOK_SERVICE_NAME"
+  fi
 }
 
 write_nginx_site() {

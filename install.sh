@@ -243,7 +243,11 @@ write_webhook_quadlet() {
 
   chmod 0644 "$WEBHOOK_UNIT_PATH"
   systemctl daemon-reload
-  systemctl enable --now "$WEBHOOK_SERVICE_NAME"
+  if systemctl is-active --quiet "$WEBHOOK_SERVICE_NAME"; then
+    systemctl restart "$WEBHOOK_SERVICE_NAME"
+  else
+    systemctl start "$WEBHOOK_SERVICE_NAME"
+  fi
 }
 
 write_nginx_site() {

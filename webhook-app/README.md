@@ -5,7 +5,7 @@ Bu bileşen, deploy webhook container'ını ve (istersen) webhook domain için N
 ## Ne kurar
 
 - `/etc/containers/systemd/quadlet-webhook.container`
-- `quadlet-webhook.service` (enable + start)
+- `quadlet-webhook.service` (start/restart)
 - `/opt/quadlet-rollout/global_version` (owner: `quadlet-rollout`)
 - Opsiyonel Nginx site config (`/etc/nginx/sites-available/<domain>`)
 
@@ -45,3 +45,8 @@ sudo ./webhook-app/install.sh
 ```bash
 sudo ./webhook-app/install.sh
 ```
+
+`Failed to enable unit: Unit /run/systemd/generator/quadlet-webhook.service is transient or generated.` görürsen:
+
+- Bu, Quadlet için beklenen davranıştır; generated `.service` enable edilmez.
+- Installer artık `enable` çağırmadan `start/restart` uygular.
