@@ -252,6 +252,14 @@ write_nginx_site() {
     "SSL_KEY_PATH=$SSL_KEY_PATH" \
     "WEBHOOK_LOCAL_PORT=$WEBHOOK_LOCAL_PORT"
 
+  if [[ "$NGINX_ACTIVATE_CONFIG" != "y" ]]; then
+    warn "Nginx config oluşturuldu ama aktive edilmedi: $site_path"
+    warn "Manuel aktivasyon için:"
+    warn "  ln -sfn $site_path $enabled_path"
+    warn "  nginx -t && systemctl reload nginx"
+    return 0
+  fi
+
   if [[ "$NGINX_ENABLE_SSL" == "y" && ( ! -f "$SSL_CERT_PATH" || ! -f "$SSL_KEY_PATH" ) ]]; then
     warn "TLS dosyaları bulunamadı:"
     warn "  cert: $SSL_CERT_PATH"
@@ -361,6 +369,7 @@ collect_inputs() {
   prompt_yes_no CONFIGURE_NGINX "Nginx reverse proxy yapılandırılsın mı?" "y"
   if [[ "$CONFIGURE_NGINX" == "y" ]]; then
     prompt_yes_no NGINX_ENABLE_SSL "Nginx üzerinde SSL/TLS aktif edilsin mi?" "y"
+    prompt_yes_no NGINX_ACTIVATE_CONFIG "Oluşturulan Nginx config otomatik aktive edilsin mi?" "n"
     if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
       prompt_default SSL_CERT_PATH "TLS fullchain path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/fullchain.pem"
       prompt_default SSL_KEY_PATH "TLS private key path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/privkey.pem"
@@ -372,6 +381,7 @@ collect_inputs() {
     fi
   else
     NGINX_ENABLE_SSL="n"
+    NGINX_ACTIVATE_CONFIG="n"
     SSL_CERT_PATH=""
     SSL_KEY_PATH=""
     ACME_CHALLENGE_ROOT="/var/www/certbot"
@@ -387,10 +397,16 @@ collect_inputs() {
 
 summary() {
   local deploy_scheme
+  local nginx_activation_note
   if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
     deploy_scheme="https"
   else
     deploy_scheme="http"
+  fi
+  if [[ "$CONFIGURE_NGINX" == "y" && "$NGINX_ACTIVATE_CONFIG" != "y" ]]; then
+    nginx_activation_note="Nginx config oluşturuldu ancak aktive edilmedi (manuel aktive etmelisin)."
+  else
+    nginx_activation_note="Nginx config aktivasyon durumu: otomatik."
   fi
 
   cat <<EOF
@@ -407,6 +423,9 @@ Webhook:
 GitHub Actions secret:
   DEPLOY_URL=${deploy_scheme}://$WEBHOOK_DOMAIN
   DEPLOY_SALT_SECRET=$SALT_SECRET
+
+Nginx:
+  $nginx_activation_note
 
 Not:
   SALT_SECRET değeri sadece bu kurulum sırasında gösterildi.

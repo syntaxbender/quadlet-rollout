@@ -230,6 +230,7 @@ Script sırasında istenecek temel inputlar:
 
 - Webhook domain (`webhook.example.com`)
 - Nginx için `SSL/TLS aktif edilsin mi?` sorusu
+- Nginx config `otomatik aktive edilsin mi?` sorusu (varsayılan: hayır)
 - `SALT_SECRET` (boş bırakılırsa otomatik üretilir)
 - `TOKEN_TOLERANCE_MINUTES`
 - Agent kurulacak Linux kullanıcıları
