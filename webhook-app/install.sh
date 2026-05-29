@@ -190,6 +190,22 @@ debug_quadlet_generation_failure() {
     | tail -n 120 >&2 || true
 }
 
+debug_webhook_start_failure() {
+  warn "Webhook service start/restart başarısız: $WEBHOOK_SERVICE_NAME"
+  warn "systemctl status çıktısı:"
+  systemctl status "$WEBHOOK_SERVICE_NAME" --no-pager -l >&2 || true
+
+  warn "journalctl -xeu çıktısı (son 120 satır):"
+  journalctl -xeu "$WEBHOOK_SERVICE_NAME" --no-pager -n 120 >&2 || true
+
+  if command -v podman >/dev/null 2>&1; then
+    warn "podman ps -a (quadlet-webhook filtreli):"
+    podman ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -E '^quadlet-webhook($| )' >&2 || true
+    warn "podman logs quadlet-webhook (varsa):"
+    podman logs quadlet-webhook 2>&1 | tail -n 120 >&2 || true
+  fi
+}
+
 ensure_service_user() {
   if ! getent group "$APP_USER" >/dev/null 2>&1; then
     groupadd --system --gid "$APP_GID" "$APP_USER"
@@ -239,14 +255,19 @@ write_webhook_quadlet() {
     die "Unit oluşturulamadı: $WEBHOOK_SERVICE_NAME"
   fi
 
+  local service_action="start"
   if systemctl is-active --quiet "$WEBHOOK_SERVICE_NAME"; then
-    systemctl restart "$WEBHOOK_SERVICE_NAME"
-  else
-    systemctl start "$WEBHOOK_SERVICE_NAME"
+    service_action="restart"
+  fi
+
+  if ! systemctl "$service_action" "$WEBHOOK_SERVICE_NAME"; then
+    debug_webhook_start_failure
+    die "Webhook service ${service_action} başarısız: $WEBHOOK_SERVICE_NAME"
   fi
 
   # Quadlet units are generated/transient; do not call "systemctl enable" on *.service.
   if ! systemctl is-active --quiet "$WEBHOOK_SERVICE_NAME"; then
+    debug_webhook_start_failure
     die "Webhook service aktif değil: $WEBHOOK_SERVICE_NAME"
   fi
 }

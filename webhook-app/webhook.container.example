@@ -11,6 +11,8 @@ PublishPort=127.0.0.1:18080:8080
 Environment=SALT_SECRET=replace_me
 Environment=VERSION_FILE=/data/global_version
 Environment=TZ=UTC
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
 Environment=TOKEN_TOLERANCE_MINUTES=5
 Environment=MAX_HEADER_VALUE_LEN=128
 Volume=/opt/quadlet-rollout:/data:Z
