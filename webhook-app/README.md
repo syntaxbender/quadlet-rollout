@@ -50,3 +50,8 @@ sudo ./webhook-app/install.sh
 
 - Bu, Quadlet için beklenen davranıştır; generated `.service` enable edilmez.
 - Installer artık `enable` çağırmadan `start/restart` uygular.
+
+`Failed to set up mount namespacing: /run/systemd/unit-root/data: No such file or directory` görürsen:
+
+- Bu hata, service-level `ReadWritePaths=/data` gibi host path ile container path'in karışmasından kaynaklanır.
+- Güncel template bu ayarı içermez; installer'ı tekrar çalıştırarak unit'i yeniden üret.
