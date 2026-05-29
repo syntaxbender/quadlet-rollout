@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd /
 
 WEBHOOK_APP_DIR="$SCRIPT_DIR/webhook-app"
 AGENT_DIR="$SCRIPT_DIR/agent"

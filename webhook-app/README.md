@@ -8,6 +8,7 @@ Bu bileşen, deploy webhook container'ını ve (istersen) webhook domain için N
 - `quadlet-webhook.service` (start/restart)
 - `/opt/quadlet-rollout/global_version` (owner: `quadlet-rollout`)
 - Opsiyonel Nginx site config (`/etc/nginx/sites-available/<domain>`)
+- Koşullu Certbot SSL üretimi (aşağıdaki koşullar sağlanırsa)
 
 ## Çalıştırma
 
@@ -23,6 +24,38 @@ sudo SALT_SECRET='...' WEBHOOK_IMAGE='ghcr.io/org/webhook:latest' BUILD_IMAGE='n
 
 ```bash
 sudo WEBHOOK_DOMAIN='webhook.example.com' CONFIGURE_NGINX='y' NGINX_ENABLE_SSL='y' NGINX_ACTIVATE_CONFIG='n' ./webhook-app/install.sh
+```
+
+## Otomatik SSL Koşulları
+
+Script aşağıdakiler **aynı anda** `y` ise certbot ile sertifika üretir/yeniler:
+
+- `CONFIGURE_NGINX`
+- `NGINX_ENABLE_SSL`
+- `NGINX_ACTIVATE_CONFIG`
+
+Akış:
+
+1. Önce HTTP config aktive edilir (ACME challenge erişimi için).
+2. `certbot certonly --webroot --keep-until-expiring --expand` çalışır.
+3. Sertifika geldikten sonra HTTPS config aktive edilir.
+
+İlgili env'ler:
+
+- `CERTBOT_EMAIL` (zorunlu; script sorar)
+- `CERTBOT_BIN` (default: `/usr/bin/certbot`)
+- `CERTBOT_CERT_NAME` (default: `WEBHOOK_DOMAIN`)
+- `ACME_CHALLENGE_ROOT` (default: `/var/www/certbot`)
+
+Örnek:
+
+```bash
+sudo WEBHOOK_DOMAIN='webhook.example.com' \
+  CONFIGURE_NGINX='y' \
+  NGINX_ENABLE_SSL='y' \
+  NGINX_ACTIVATE_CONFIG='y' \
+  CERTBOT_EMAIL='info@example.com' \
+  ./webhook-app/install.sh
 ```
 
 ## Upgrade

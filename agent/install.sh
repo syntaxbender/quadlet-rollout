@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd /
 
 APP_USER="${APP_USER:-quadlet-rollout}"
 PROJECT_DIR="${PROJECT_DIR:-/opt/quadlet-rollout}"

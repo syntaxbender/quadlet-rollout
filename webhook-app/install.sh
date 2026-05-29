@@ -33,6 +33,9 @@ NGINX_ACTIVATE_CONFIG="${NGINX_ACTIVATE_CONFIG:-n}"
 ACME_CHALLENGE_ROOT="${ACME_CHALLENGE_ROOT:-/var/www/certbot}"
 SSL_CERT_PATH="${SSL_CERT_PATH:-}"
 SSL_KEY_PATH="${SSL_KEY_PATH:-}"
+CERTBOT_BIN="${CERTBOT_BIN:-/usr/bin/certbot}"
+CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
+CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-$WEBHOOK_DOMAIN}"
 SALT_SECRET="${SALT_SECRET:-}"
 
 log() {
@@ -139,6 +142,10 @@ collect_missing_inputs() {
       [[ -n "$SSL_CERT_PATH" ]] || prompt_default SSL_CERT_PATH "TLS fullchain path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/fullchain.pem"
       [[ -n "$SSL_KEY_PATH" ]] || prompt_default SSL_KEY_PATH "TLS private key path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/privkey.pem"
       [[ -n "$ACME_CHALLENGE_ROOT" ]] || prompt_default ACME_CHALLENGE_ROOT "ACME challenge root" "/var/www/certbot"
+      if [[ "$NGINX_ACTIVATE_CONFIG" == "y" ]]; then
+        [[ -n "$CERTBOT_EMAIL" ]] || prompt_default CERTBOT_EMAIL "Certbot account email" "info@$WEBHOOK_DOMAIN"
+        [[ -n "$CERTBOT_CERT_NAME" ]] || prompt_default CERTBOT_CERT_NAME "Certbot cert name" "$WEBHOOK_DOMAIN"
+      fi
     else
       SSL_CERT_PATH=""
       SSL_KEY_PATH=""
@@ -154,8 +161,16 @@ validate_inputs() {
   [[ "$TOKEN_TOLERANCE_MINUTES" =~ ^[0-9]+$ ]] || die "TOKEN_TOLERANCE_MINUTES sayısal olmalı"
   (( TOKEN_TOLERANCE_MINUTES <= 60 )) || die "TOKEN_TOLERANCE_MINUTES çok yüksek (önerilen: 0-10)"
 
+  [[ "$WEBHOOK_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "WEBHOOK_DOMAIN geçersiz formatta"
   [[ "$PROJECT_DIR" == /* ]] || die "PROJECT_DIR absolute path olmalı"
   [[ "$SALT_SECRET" =~ ^[A-Za-z0-9._-]+$ ]] || die "SALT_SECRET yalnızca [A-Za-z0-9._-] içermeli"
+
+  if [[ "$CONFIGURE_NGINX" == "y" && "$NGINX_ENABLE_SSL" == "y" && "$NGINX_ACTIVATE_CONFIG" == "y" ]]; then
+    [[ "$CERTBOT_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || \
+      die "CERTBOT_EMAIL geçersiz formatta"
+    [[ "$ACME_CHALLENGE_ROOT" == /* ]] || die "ACME_CHALLENGE_ROOT absolute path olmalı"
+    [[ "$CERTBOT_BIN" == /* ]] || die "CERTBOT_BIN absolute path olmalı"
+  fi
 }
 
 ensure_quadlet_capable_podman() {
@@ -173,6 +188,21 @@ ensure_quadlet_capable_podman() {
     && [[ ! -x /usr/libexec/podman/quadlet ]]; then
     die "Quadlet generator bulunamadı. Podman kurulumunu doğrulayın."
   fi
+}
+
+ensure_nginx_certbot_ready() {
+  command -v nginx >/dev/null 2>&1 || die "nginx bulunamadı"
+
+  if [[ -x "$CERTBOT_BIN" ]]; then
+    return 0
+  fi
+
+  if command -v certbot >/dev/null 2>&1; then
+    CERTBOT_BIN="$(command -v certbot)"
+    return 0
+  fi
+
+  die "certbot bulunamadı (CERTBOT_BIN=$CERTBOT_BIN)"
 }
 
 debug_quadlet_generation_failure() {
@@ -272,10 +302,34 @@ write_webhook_quadlet() {
   fi
 }
 
+request_or_renew_webhook_cert() {
+  local -a certbot_args
+
+  install -d -m 0755 "$ACME_CHALLENGE_ROOT/.well-known/acme-challenge"
+
+  certbot_args=(
+    certonly
+    --webroot
+    -w "$ACME_CHALLENGE_ROOT"
+    --cert-name "$CERTBOT_CERT_NAME"
+    --email "$CERTBOT_EMAIL"
+    --agree-tos
+    --no-eff-email
+    --non-interactive
+    --keep-until-expiring
+    --expand
+    --staple-ocsp
+    -d "$WEBHOOK_DOMAIN"
+  )
+
+  log "certbot certonly: cert_name=$CERTBOT_CERT_NAME domain=$WEBHOOK_DOMAIN"
+  "$CERTBOT_BIN" "${certbot_args[@]}"
+}
+
 write_nginx_site() {
   local site_path="$NGINX_SITE_AVAILABLE_DIR/$WEBHOOK_DOMAIN"
   local enabled_path="$NGINX_SITE_ENABLED_DIR/$WEBHOOK_DOMAIN"
-  local nginx_template
+  local nginx_template="$NGINX_SITE_TEMPLATE_PATH_HTTP"
   local continue_without_cert
 
   if [[ "$CONFIGURE_NGINX" != "y" ]]; then
@@ -283,24 +337,20 @@ write_nginx_site() {
     return 0
   fi
 
-  log "Nginx site dosyası yazılıyor: $site_path"
-
-  if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
-    nginx_template="$NGINX_SITE_TEMPLATE_PATH_SSL"
-  else
-    nginx_template="$NGINX_SITE_TEMPLATE_PATH_HTTP"
-  fi
-
-  render_template \
-    "$nginx_template" \
-    "$site_path" \
-    "WEBHOOK_DOMAIN=$WEBHOOK_DOMAIN" \
-    "ACME_CHALLENGE_ROOT=$ACME_CHALLENGE_ROOT" \
-    "SSL_CERT_PATH=$SSL_CERT_PATH" \
-    "SSL_KEY_PATH=$SSL_KEY_PATH" \
-    "WEBHOOK_LOCAL_PORT=$WEBHOOK_LOCAL_PORT"
-
   if [[ "$NGINX_ACTIVATE_CONFIG" != "y" ]]; then
+    if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
+      nginx_template="$NGINX_SITE_TEMPLATE_PATH_SSL"
+    fi
+    log "Nginx site dosyası yazılıyor: $site_path"
+    render_template \
+      "$nginx_template" \
+      "$site_path" \
+      "WEBHOOK_DOMAIN=$WEBHOOK_DOMAIN" \
+      "ACME_CHALLENGE_ROOT=$ACME_CHALLENGE_ROOT" \
+      "SSL_CERT_PATH=$SSL_CERT_PATH" \
+      "SSL_KEY_PATH=$SSL_KEY_PATH" \
+      "WEBHOOK_LOCAL_PORT=$WEBHOOK_LOCAL_PORT"
+
     warn "Nginx config oluşturuldu ama aktive edilmedi: $site_path"
     warn "Manuel aktivasyon için:"
     warn "  ln -sfn $site_path $enabled_path"
@@ -308,15 +358,44 @@ write_nginx_site() {
     return 0
   fi
 
-  if [[ "$NGINX_ENABLE_SSL" == "y" && ( ! -f "$SSL_CERT_PATH" || ! -f "$SSL_KEY_PATH" ) ]]; then
-    warn "TLS dosyaları bulunamadı:"
-    warn "  cert: $SSL_CERT_PATH"
-    warn "  key : $SSL_KEY_PATH"
-    prompt_yes_no continue_without_cert "Yine de Nginx config test/reload denensin mi?" "n"
-    [[ "$continue_without_cert" == "y" ]] || return 0
+  # Always activate HTTP config first so ACME webroot can be served on port 80.
+  log "Nginx HTTP config aktive ediliyor (ACME hazırlığı): $site_path"
+  render_template \
+    "$NGINX_SITE_TEMPLATE_PATH_HTTP" \
+    "$site_path" \
+    "WEBHOOK_DOMAIN=$WEBHOOK_DOMAIN" \
+    "ACME_CHALLENGE_ROOT=$ACME_CHALLENGE_ROOT" \
+    "SSL_CERT_PATH=$SSL_CERT_PATH" \
+    "SSL_KEY_PATH=$SSL_KEY_PATH" \
+    "WEBHOOK_LOCAL_PORT=$WEBHOOK_LOCAL_PORT"
+  ln -sfn "$site_path" "$enabled_path"
+  nginx -t
+  systemctl reload nginx
+
+  if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
+    ensure_nginx_certbot_ready
+    request_or_renew_webhook_cert
+
+    if [[ ! -f "$SSL_CERT_PATH" || ! -f "$SSL_KEY_PATH" ]]; then
+      warn "TLS dosyaları certbot sonrası da bulunamadı:"
+      warn "  cert: $SSL_CERT_PATH"
+      warn "  key : $SSL_KEY_PATH"
+      prompt_yes_no continue_without_cert "HTTP config ile devam edilsin mi?" "n"
+      [[ "$continue_without_cert" == "y" ]] || return 1
+      return 0
+    fi
+
+    log "Nginx HTTPS config aktive ediliyor: $site_path"
+    render_template \
+      "$NGINX_SITE_TEMPLATE_PATH_SSL" \
+      "$site_path" \
+      "WEBHOOK_DOMAIN=$WEBHOOK_DOMAIN" \
+      "ACME_CHALLENGE_ROOT=$ACME_CHALLENGE_ROOT" \
+      "SSL_CERT_PATH=$SSL_CERT_PATH" \
+      "SSL_KEY_PATH=$SSL_KEY_PATH" \
+      "WEBHOOK_LOCAL_PORT=$WEBHOOK_LOCAL_PORT"
   fi
 
-  ln -sfn "$site_path" "$enabled_path"
   nginx -t
   systemctl reload nginx
 }
