@@ -1,14 +1,17 @@
 # SSH'siz Quadlet Deploy MVP
 
-Bu depo, Ubuntu 24.04 + Podman Quadlet için SSH'siz deploy mimarisi örneği içerir.
+Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örneği içerir.
 
 ## Bileşenler
 
-- `webhook-app/webhook.py`: HTTPS arkasında çalışacak webhook uygulaması
+- `webhook-app/webhook.py`: Nginx reverse proxy arkasında çalışacak webhook uygulaması
 - `agent/quadlet-agent.sh`: user-space agent script'i
 - `agent/systemd-user/*.service|*.timer`: her kullanıcıya kurulacak user unit dosyaları
 - `examples/server-quadlets/`: kullanıcı bazlı `.container` repo örneği
+- `examples/nginx/webhook-ingress.example.conf`: webhook domain için Nginx reverse proxy örneği
 - `github-actions.deploy.example.yml`: Actions örnek akışı
+- `install.sh`: Ubuntu 22.04/24.04 için interaktif kurulum script'i
+- `templates/`: `install.sh` tarafından render edilen webhook quadlet ve nginx config template'leri
 
 ## Webhook Özeti
 
@@ -24,6 +27,7 @@ Bu depo, Ubuntu 24.04 + Podman Quadlet için SSH'siz deploy mimarisi örneği i�
 - Token doğrulama: `X-Deploy-Time-UTC` ile webhook `now(UTC)` farkı varsayılan `+/-5 dakika`
 - Token payload formatı: `TIME_UTC + "\\n" + lower(sha)`
 - Başarılı istek: `VERSION_FILE` içine SHA atomic yazılır
+- TLS termination Nginx üzerinde yapılır, webhook container local HTTP dinler
 - Webhook, servis restart veya user-space işlem yapmaz
 
 ## Agent Özeti
@@ -76,7 +80,7 @@ Kaynak: [quadlet-agent.timer](/home/syn/Desktop/webhook/agent/systemd-user/quadl
 2. Quadlet `.container` içinde env tanımlarını güncelle:
    - `Environment=SALT_SECRET=...`
    - `Environment=VERSION_FILE=...`
-   - `Environment=PORT=...`
+   - `Environment=PORT=8080` (container iç portu)
    - `Environment=TZ=UTC`
    - `Environment=TOKEN_TOLERANCE_MINUTES=5`
    - `Environment=MAX_HEADER_VALUE_LEN=...` (opsiyonel)
@@ -171,12 +175,63 @@ systemctl --user daemon-reload
 systemctl --user enable --now quadlet-agent.timer
 ```
 
-4. Webhook app'i container olarak çalıştırırken host path mount et:
+4. Webhook app'i container olarak çalıştırırken host path mount + local publish kullan:
 
-`Volume=/opt/quadlet-rollout:/data:Z`
+`Volume=/opt/quadlet-rollout:/data:Z`  
+`PublishPort=127.0.0.1:18080:8080`
+
+5. Nginx reverse proxy'yi webhook domain için etkinleştir:
+
+```bash
+# Örnek dosyayı kopyala ve domain/cert path değerlerini güncelle
+sudo cp examples/nginx/webhook-ingress.example.conf /etc/nginx/sites-available/webhook.example.com
+
+# site'ı etkinleştir
+sudo ln -s /etc/nginx/sites-available/webhook.example.com /etc/nginx/sites-enabled/webhook.example.com
+
+# config doğrula ve reload et
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Nginx örnek dosyası: [webhook-ingress.example.conf](/home/syn/Desktop/webhook/examples/nginx/webhook-ingress.example.conf)
+
+6. Pipeline secret'ında webhook URL'i domain üzerinden ver:
+
+```text
+DEPLOY_URL=https://webhook.example.com
+```
 
 ## Minimum yetki modeli
 
 - Webhook sadece `global_version` yazabilir
 - Agent root değildir, sadece kendi user-space'inde çalışır
 - `systemctl --user` sadece ilgili kullanıcı context'inde çağrılır
+
+## Interaktif Kurulum Scripti
+
+`install.sh` webhook + agent kurulumunu interaktif olarak yapar:
+
+- Podman/Nginx/paket kurulumu
+- `quadlet-rollout` servis kullanıcısı
+- webhook image build ve quadlet unit yazımı
+- Nginx reverse proxy site config oluşturma (opsiyonel)
+- Agent kullanıcıları için `quadlet-agent` kurulum ve timer enable
+- Webhook/Nginx config dosyalarını `templates/` altından variable substitution ile render etme
+
+Çalıştırma:
+
+```bash
+chmod +x ./install.sh
+sudo ./install.sh
+```
+
+Script sırasında istenecek temel inputlar:
+
+- Webhook domain (`webhook.example.com`)
+- `SALT_SECRET` (boş bırakılırsa otomatik üretilir)
+- `TOKEN_TOLERANCE_MINUTES`
+- Agent kurulacak Linux kullanıcıları
+- Her kullanıcı için `SERVICES`
+
+Not (Ubuntu 22.04): Varsayılan repo Podman sürümü eski olabilir. Script Quadlet için `Podman >= 4.6` bekler.

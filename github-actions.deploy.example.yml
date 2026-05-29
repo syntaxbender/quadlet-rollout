@@ -29,6 +29,7 @@ jobs:
 
       - name: Notify webhook
         env:
+          # Example: https://webhook.example.com
           DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
         run: |
           curl -fsS -X POST "$DEPLOY_URL/deploy" \

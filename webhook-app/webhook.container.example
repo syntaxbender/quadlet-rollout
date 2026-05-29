@@ -6,7 +6,8 @@ Wants=network-online.target
 [Container]
 Image=ghcr.io/org/quadlet-webhook:latest
 ContainerName=quadlet-webhook
-PublishPort=8443:8080
+# Nginx reverse proxy kullanıldığında container sadece localhost'a açılır.
+PublishPort=127.0.0.1:18080:8080
 Environment=SALT_SECRET=replace_me
 Environment=VERSION_FILE=/data/global_version
 Environment=TZ=UTC
