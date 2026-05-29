@@ -42,7 +42,9 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - Repoda `quadlet-containers/$USER/` varsa içeriği `$HOME/` altına whitelist ile overwrite kopyalanır
 - Sadece `*.container`, `*.service`, `*.timer` dosyaları kopyalanır
 - Kaynak ağaçta symlink varsa güvenlik nedeniyle deploy reddedilir
-- `systemctl --user daemon-reload` ve tanımlı servis restart edilir
+- `systemctl --user daemon-reload` sonrası restart hedefleri dinamik belirlenir:
+  - `~/.config/containers/systemd/*.container -> <name>.service`
+  - `~/.config/systemd/user/*.service|*.timer -> aynı unit adı`
 - `install.sh`, her agent kullanıcısı için boş `~/.config/quadlet-agent/app.env` dosyası oluşturur (manuel doldurulur)
 
 ## Nginx Rollout Özeti
@@ -153,7 +155,6 @@ Kaynak: [nginx-rollout.env.example](/home/syn/Desktop/webhook/nginx-rollout/ngin
    - `GLOBAL_VERSION_FILE`
    - `REPO_URL`
    - `REPO_DIR`
-   - `SERVICES`
    - Önerilen `REPO_URL`: `https://github.com/syntaxbender/quadlet-services.git`
    - Önerilen `REPO_DIR`: `<project_dir>/repos/quadlet-nginx-shared-repo` (default: `/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo`)
 3. Timer bir sonraki turda yeni değerlerle çalışır. Hemen denemek için:
@@ -324,9 +325,34 @@ Script sırasında istenecek temel inputlar:
 - `TOKEN_TOLERANCE_MINUTES`
 - Quadlet rollout project dizini (`/opt/quadlet-rollout`)
 - Agent kurulacak Linux kullanıcıları
-- Her kullanıcı için `SERVICES`
 - Ortak repo URL (`https://github.com/syntaxbender/quadlet-services.git`)
 - Ortak repo clone path (otomatik): `<project_dir>/repos/quadlet-nginx-shared-repo`
 - `ACME_CHALLENGE_ROOT`, `CERTBOT_BIN` (rollout timer otomatik enable)
 
 Not (Ubuntu 22.04): Varsayılan repo Podman sürümü eski olabilir. Script Quadlet için `Podman >= 4.6` bekler.
+
+## Bileşen Bazlı Kurulum/Upgrade
+
+Toplu kurulum yerine sadece değişen bileşeni upgrade etmek için her dizinde ayrı installer bulunur:
+
+- Webhook bileşeni: [webhook-app/install.sh](/home/syn/Desktop/webhook/webhook-app/install.sh)
+- Agent bileşeni: [agent/install.sh](/home/syn/Desktop/webhook/agent/install.sh)
+- Nginx rollout bileşeni: [nginx-rollout/install.sh](/home/syn/Desktop/webhook/nginx-rollout/install.sh)
+
+Detaylı kullanım dokümanları:
+
+- [webhook-app/README.md](/home/syn/Desktop/webhook/webhook-app/README.md)
+- [agent/README.md](/home/syn/Desktop/webhook/agent/README.md)
+- [nginx-rollout/README.md](/home/syn/Desktop/webhook/nginx-rollout/README.md)
+
+Örnek upgrade akışı:
+
+```bash
+git pull
+sudo ./webhook-app/install.sh
+sudo TARGET_USER="appuser1" ./agent/install.sh
+sudo ./nginx-rollout/install.sh
+```
+
+zaafiyetlerin ammınake
+-ai(chatgpt)

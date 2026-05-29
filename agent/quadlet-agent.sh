@@ -23,7 +23,6 @@ require_var() {
 require_var GLOBAL_VERSION_FILE
 require_var REPO_URL
 require_var REPO_DIR
-require_var SERVICES
 
 [[ -r "$GLOBAL_VERSION_FILE" ]] || { echo "global version unreadable: $GLOBAL_VERSION_FILE" >&2; exit 1; }
 NEW_VERSION="$(tr -d '[:space:]' < "$GLOBAL_VERSION_FILE")"
@@ -78,6 +77,19 @@ if find "$SRC_USER_DIR" -type l -print -quit | grep -q .; then
 fi
 
 copied_any=0
+declare -A restart_unit_seen=()
+restart_units=()
+
+add_restart_unit() {
+  local unit="$1"
+  [[ -n "$unit" ]] || return 0
+  if [[ -z "${restart_unit_seen[$unit]:-}" ]]; then
+    restart_unit_seen["$unit"]=1
+    restart_units+=("$unit")
+  fi
+}
+
+HOME_REAL="$(realpath -m "$DST_HOME")"
 
 while IFS= read -r -d '' src_path; do
   rel_path="${src_path#"$SRC_USER_DIR"/}"
@@ -85,9 +97,8 @@ while IFS= read -r -d '' src_path; do
 
   # Hedefin kullanıcı home dışına taşmadığını kesin doğrula.
   target_real="$(realpath -m "$target_path")"
-  home_real="$(realpath -m "$DST_HOME")"
   case "$target_real" in
-    "$home_real"/*) ;;
+    "$HOME_REAL"/*) ;;
     *)
       echo "refusing path escape: $src_path -> $target_real" >&2
       exit 1
@@ -104,6 +115,17 @@ while IFS= read -r -d '' src_path; do
       mkdir -p "$(dirname "$target_real")"
       cp -f "$src_path" "$target_real"
       copied_any=1
+
+      case "$target_real" in
+        "$HOME_REAL/.config/containers/systemd/"*.container)
+          unit_name="$(basename "${target_real%.container}").service"
+          add_restart_unit "$unit_name"
+          ;;
+        "$HOME_REAL/.config/systemd/user/"*.service|"$HOME_REAL/.config/systemd/user/"*.timer)
+          unit_name="$(basename "$target_real")"
+          add_restart_unit "$unit_name"
+          ;;
+      esac
       ;;
     *)
       ;;
@@ -115,8 +137,8 @@ if [[ "$copied_any" -eq 0 ]]; then
 fi
 
 systemctl --user daemon-reload
-for svc in $SERVICES; do
-  systemctl --user restart "$svc"
+for unit_name in "${restart_units[@]}"; do
+  systemctl --user restart "$unit_name"
 done
 
 printf '%s\n' "$NEW_VERSION" > "$SEEN_FILE"

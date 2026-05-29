@@ -5,4 +5,6 @@ REPO_DIR="/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo"
 # Repo içinde kullanıcı yolu sabit kural:
 # $REPO_DIR/quadlet-containers/$USER/
 # Bu dizinin içeriği birebir $HOME altına overwrite edilir (silme yok).
-SERVICES="appsvc app2svc app3svc"
+# Restart hedefleri dinamik çıkarılır:
+# - ~/.config/containers/systemd/*.container -> <name>.service
+# - ~/.config/systemd/user/*.service|*.timer -> aynı unit adı

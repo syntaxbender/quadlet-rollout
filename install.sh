@@ -392,7 +392,6 @@ prepare_shared_repo_dir() {
 
 install_agent_for_user() {
   local user="$1"
-  local services="$2"
   local uid home config_path env_file
 
   uid="$(id -u "$user")"
@@ -428,7 +427,6 @@ install_agent_for_user() {
 GLOBAL_VERSION_FILE="$VERSION_FILE"
 REPO_URL="$AGENT_REPO_URL"
 REPO_DIR="$AGENT_REPO_DIR"
-SERVICES="$services"
 EOF
   chown "$user:$user" "$config_path"
   chmod 0644 "$config_path"
@@ -634,10 +632,9 @@ main() {
     warn "Nginx kurulumu atlandı. Webhook sadece localhost:${WEBHOOK_LOCAL_PORT} üzerinde dinliyor."
   fi
 
-  local user services
+  local user
   for user in "${AGENT_USERS[@]}"; do
-    prompt_default services "$user kullanıcısı için SERVICES" "appsvc"
-    install_agent_for_user "$user" "$services"
+    install_agent_for_user "$user"
   done
 
   if [[ "$INSTALL_NGINX_ROLLOUT" == "y" ]]; then
