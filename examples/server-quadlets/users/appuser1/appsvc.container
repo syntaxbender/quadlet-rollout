@@ -6,6 +6,7 @@ After=network-online.target
 Image=ghcr.io/org/appsvc:latest
 ContainerName=appsvc
 AutoUpdate=registry
+EnvironmentFile=%h/.config/quadlet-agent/app.env
 
 [Service]
 Restart=always

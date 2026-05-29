@@ -23,6 +23,7 @@ NGINX_SITE_AVAILABLE_DIR="/etc/nginx/sites-available"
 NGINX_SITE_ENABLED_DIR="/etc/nginx/sites-enabled"
 
 AGENT_USERS=()
+AGENT_ENV_FILENAME="app.env"
 
 log() {
   printf '[INFO] %s\n' "$*"
@@ -314,7 +315,7 @@ validate_inputs() {
 install_agent_for_user() {
   local user="$1"
   local services="$2"
-  local uid home config_path
+  local uid home config_path env_file
 
   uid="$(id -u "$user")"
   home="$(getent passwd "$user" | cut -d: -f6)"
@@ -343,6 +344,16 @@ SERVICES="$services"
 EOF
   chown "$user:$user" "$config_path"
   chmod 0644 "$config_path"
+
+  env_file="$home/.config/quadlet-agent/$AGENT_ENV_FILENAME"
+  if [[ ! -f "$env_file" ]]; then
+    : >"$env_file"
+    chown "$user:$user" "$env_file"
+    chmod 0600 "$env_file"
+    log "Boş env dosyası oluşturuldu: $env_file"
+  else
+    log "Mevcut env dosyası korunuyor: $env_file"
+  fi
 
   run_user_systemctl "$user" "$uid" daemon-reload
   run_user_systemctl "$user" "$uid" enable --now quadlet-agent.timer
@@ -426,6 +437,9 @@ GitHub Actions secret:
 
 Nginx:
   $nginx_activation_note
+
+Agent env dosyası:
+  Her kullanıcı için: ~/.config/quadlet-agent/$AGENT_ENV_FILENAME
 
 Not:
   SALT_SECRET değeri sadece bu kurulum sırasında gösterildi.

@@ -38,6 +38,7 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - Sadece `*.container`, `*.service`, `*.timer` dosyaları kopyalanır
 - Kaynak ağaçta symlink varsa güvenlik nedeniyle deploy reddedilir
 - `systemctl --user daemon-reload` ve tanımlı servis restart edilir
+- `install.sh`, her agent kullanıcısı için boş `~/.config/quadlet-agent/app.env` dosyası oluşturur (manuel doldurulur)
 
 ## Varsayılan Değerler
 
@@ -57,6 +58,7 @@ Kaynak: [webhook.py](/home/syn/Desktop/webhook/webhook-app/webhook.py)
 ### Agent varsayılanları
 
 - Config yolu: `${XDG_CONFIG_HOME:-$HOME/.config}/quadlet-agent/config`
+- Env dosyası: `${XDG_CONFIG_HOME:-$HOME/.config}/quadlet-agent/app.env` (boş oluşturulur)
 - State yolu: `${XDG_STATE_HOME:-$HOME/.local/state}/quadlet-agent/seen_version`
 - Repo kullanıcı dizin kuralı: `$REPO_DIR/quadlet-containers/$USER/`
 - Hedef kök: `$HOME/`
