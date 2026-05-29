@@ -229,6 +229,7 @@ sudo ./install.sh
 Script sırasında istenecek temel inputlar:
 
 - Webhook domain (`webhook.example.com`)
+- Nginx için `SSL/TLS aktif edilsin mi?` sorusu
 - `SALT_SECRET` (boş bırakılırsa otomatik üretilir)
 - `TOKEN_TOLERANCE_MINUTES`
 - Agent kurulacak Linux kullanıcıları

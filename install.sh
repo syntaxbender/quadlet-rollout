@@ -16,7 +16,8 @@ VERSION_FILE="$VERSION_DIR/global_version"
 WEBHOOK_UNIT_PATH="/etc/containers/systemd/quadlet-webhook.container"
 WEBHOOK_SERVICE_NAME="quadlet-webhook.service"
 WEBHOOK_UNIT_TEMPLATE_PATH="$TEMPLATE_DIR/quadlet-webhook.container.tmpl"
-NGINX_SITE_TEMPLATE_PATH="$TEMPLATE_DIR/webhook-ingress.nginx.conf.tmpl"
+NGINX_SITE_TEMPLATE_PATH_SSL="$TEMPLATE_DIR/webhook-ingress.nginx.conf.tmpl"
+NGINX_SITE_TEMPLATE_PATH_HTTP="$TEMPLATE_DIR/webhook-ingress.http-only.nginx.conf.tmpl"
 
 NGINX_SITE_AVAILABLE_DIR="/etc/nginx/sites-available"
 NGINX_SITE_ENABLED_DIR="/etc/nginx/sites-enabled"
@@ -49,7 +50,8 @@ require_files() {
   [[ -f "$AGENT_DIR/systemd-user/quadlet-agent.service" ]] || die "Eksik dosya: agent service"
   [[ -f "$AGENT_DIR/systemd-user/quadlet-agent.timer" ]] || die "Eksik dosya: agent timer"
   [[ -f "$WEBHOOK_UNIT_TEMPLATE_PATH" ]] || die "Eksik template: $WEBHOOK_UNIT_TEMPLATE_PATH"
-  [[ -f "$NGINX_SITE_TEMPLATE_PATH" ]] || die "Eksik template: $NGINX_SITE_TEMPLATE_PATH"
+  [[ -f "$NGINX_SITE_TEMPLATE_PATH_SSL" ]] || die "Eksik template: $NGINX_SITE_TEMPLATE_PATH_SSL"
+  [[ -f "$NGINX_SITE_TEMPLATE_PATH_HTTP" ]] || die "Eksik template: $NGINX_SITE_TEMPLATE_PATH_HTTP"
 }
 
 prompt_default() {
@@ -230,11 +232,19 @@ write_webhook_quadlet() {
 write_nginx_site() {
   local site_path="$NGINX_SITE_AVAILABLE_DIR/$WEBHOOK_DOMAIN"
   local enabled_path="$NGINX_SITE_ENABLED_DIR/$WEBHOOK_DOMAIN"
+  local nginx_template
   local continue_without_cert
 
   log "Nginx site dosyası yazılıyor: $site_path"
+
+  if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
+    nginx_template="$NGINX_SITE_TEMPLATE_PATH_SSL"
+  else
+    nginx_template="$NGINX_SITE_TEMPLATE_PATH_HTTP"
+  fi
+
   render_template \
-    "$NGINX_SITE_TEMPLATE_PATH" \
+    "$nginx_template" \
     "$site_path" \
     "WEBHOOK_DOMAIN=$WEBHOOK_DOMAIN" \
     "ACME_CHALLENGE_ROOT=$ACME_CHALLENGE_ROOT" \
@@ -242,7 +252,7 @@ write_nginx_site() {
     "SSL_KEY_PATH=$SSL_KEY_PATH" \
     "WEBHOOK_LOCAL_PORT=$WEBHOOK_LOCAL_PORT"
 
-  if [[ ! -f "$SSL_CERT_PATH" || ! -f "$SSL_KEY_PATH" ]]; then
+  if [[ "$NGINX_ENABLE_SSL" == "y" && ( ! -f "$SSL_CERT_PATH" || ! -f "$SSL_KEY_PATH" ) ]]; then
     warn "TLS dosyaları bulunamadı:"
     warn "  cert: $SSL_CERT_PATH"
     warn "  key : $SSL_KEY_PATH"
@@ -350,9 +360,21 @@ collect_inputs() {
 
   prompt_yes_no CONFIGURE_NGINX "Nginx reverse proxy yapılandırılsın mı?" "y"
   if [[ "$CONFIGURE_NGINX" == "y" ]]; then
-    prompt_default SSL_CERT_PATH "TLS fullchain path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/fullchain.pem"
-    prompt_default SSL_KEY_PATH "TLS private key path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/privkey.pem"
-    prompt_default ACME_CHALLENGE_ROOT "ACME challenge root" "/var/www/certbot"
+    prompt_yes_no NGINX_ENABLE_SSL "Nginx üzerinde SSL/TLS aktif edilsin mi?" "y"
+    if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
+      prompt_default SSL_CERT_PATH "TLS fullchain path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/fullchain.pem"
+      prompt_default SSL_KEY_PATH "TLS private key path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/privkey.pem"
+      prompt_default ACME_CHALLENGE_ROOT "ACME challenge root" "/var/www/certbot"
+    else
+      SSL_CERT_PATH=""
+      SSL_KEY_PATH=""
+      ACME_CHALLENGE_ROOT="/var/www/certbot"
+    fi
+  else
+    NGINX_ENABLE_SSL="n"
+    SSL_CERT_PATH=""
+    SSL_KEY_PATH=""
+    ACME_CHALLENGE_ROOT="/var/www/certbot"
   fi
 
   prompt_default AGENT_REPO_URL "Agent REPO_URL" "https://github.com/org/server-quadlets.git"
@@ -364,19 +386,26 @@ collect_inputs() {
 }
 
 summary() {
+  local deploy_scheme
+  if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
+    deploy_scheme="https"
+  else
+    deploy_scheme="http"
+  fi
+
   cat <<EOF
 
 Kurulum tamamlandı.
 
 Webhook:
-  Domain: https://$WEBHOOK_DOMAIN
+  Domain: ${deploy_scheme}://$WEBHOOK_DOMAIN
   Quadlet unit: $WEBHOOK_UNIT_PATH
   Service: $WEBHOOK_SERVICE_NAME
   Version file: $VERSION_FILE
   Local upstream: 127.0.0.1:${WEBHOOK_LOCAL_PORT}
 
 GitHub Actions secret:
-  DEPLOY_URL=https://$WEBHOOK_DOMAIN
+  DEPLOY_URL=${deploy_scheme}://$WEBHOOK_DOMAIN
   DEPLOY_SALT_SECRET=$SALT_SECRET
 
 Not:
