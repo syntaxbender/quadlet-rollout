@@ -72,11 +72,17 @@ run_user_systemctl() {
 ensure_git_safe_directory() {
   local user="$1"
   local path="$2"
+  local user_home
   local existing
 
-  existing="$(runuser -u "$user" -- git config --global --get-all safe.directory 2>/dev/null || true)"
+  user_home="$(getent passwd "$user" | cut -d: -f6)"
+  [[ -n "$user_home" ]] || die "Home dizini okunamadı: $user"
+
+  existing="$(runuser -u "$user" -- env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" \
+    git -C "$user_home" config --global --get-all safe.directory 2>/dev/null || true)"
   if ! printf '%s\n' "$existing" | grep -Fxq "$path"; then
-    runuser -u "$user" -- git config --global --add safe.directory "$path"
+    runuser -u "$user" -- env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" \
+      git -C "$user_home" config --global --add safe.directory "$path"
   fi
 }
 
