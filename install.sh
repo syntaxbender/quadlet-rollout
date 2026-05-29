@@ -6,12 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEBHOOK_APP_DIR="$SCRIPT_DIR/webhook-app"
 AGENT_DIR="$SCRIPT_DIR/agent"
 TEMPLATE_DIR="$SCRIPT_DIR/templates"
+NGINX_ROLLOUT_DIR="$SCRIPT_DIR/nginx-rollout"
 
 APP_USER="quadlet-rollout"
 APP_UID="21001"
 APP_GID="21001"
 
-VERSION_DIR="/opt/quadlet-rollout"
+PROJECT_DIR="/opt/quadlet-rollout"
+VERSION_DIR="$PROJECT_DIR"
 VERSION_FILE="$VERSION_DIR/global_version"
 WEBHOOK_UNIT_PATH="/etc/containers/systemd/quadlet-webhook.container"
 WEBHOOK_SERVICE_NAME="quadlet-webhook.service"
@@ -22,8 +24,19 @@ NGINX_SITE_TEMPLATE_PATH_HTTP="$TEMPLATE_DIR/webhook-ingress.http-only.nginx.con
 NGINX_SITE_AVAILABLE_DIR="/etc/nginx/sites-available"
 NGINX_SITE_ENABLED_DIR="/etc/nginx/sites-enabled"
 
+NGINX_ROLLOUT_SCRIPT_SRC="$NGINX_ROLLOUT_DIR/nginx-rollout.sh"
+NGINX_ROLLOUT_SERVICE_SRC="$NGINX_ROLLOUT_DIR/systemd/nginx-rollout.service"
+NGINX_ROLLOUT_TIMER_SRC="$NGINX_ROLLOUT_DIR/systemd/nginx-rollout.timer"
+NGINX_ROLLOUT_SCRIPT_DST="/usr/local/bin/nginx-rollout.sh"
+NGINX_ROLLOUT_ENV_DIR="/etc/quadlet-rollout"
+NGINX_ROLLOUT_ENV_PATH="$NGINX_ROLLOUT_ENV_DIR/nginx-rollout.env"
+NGINX_ROLLOUT_SERVICE_DST="/etc/systemd/system/nginx-rollout.service"
+NGINX_ROLLOUT_TIMER_DST="/etc/systemd/system/nginx-rollout.timer"
+CERTBOT_DEPLOY_HOOK_PATH="/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh"
+
 AGENT_USERS=()
 AGENT_ENV_FILENAME="app.env"
+SHARED_REPO_NAME="quadlet-nginx-shared-repo"
 
 log() {
   printf '[INFO] %s\n' "$*"
@@ -53,6 +66,9 @@ require_files() {
   [[ -f "$WEBHOOK_UNIT_TEMPLATE_PATH" ]] || die "Eksik template: $WEBHOOK_UNIT_TEMPLATE_PATH"
   [[ -f "$NGINX_SITE_TEMPLATE_PATH_SSL" ]] || die "Eksik template: $NGINX_SITE_TEMPLATE_PATH_SSL"
   [[ -f "$NGINX_SITE_TEMPLATE_PATH_HTTP" ]] || die "Eksik template: $NGINX_SITE_TEMPLATE_PATH_HTTP"
+  [[ -f "$NGINX_ROLLOUT_SCRIPT_SRC" ]] || die "Eksik dosya: $NGINX_ROLLOUT_SCRIPT_SRC"
+  [[ -f "$NGINX_ROLLOUT_SERVICE_SRC" ]] || die "Eksik dosya: $NGINX_ROLLOUT_SERVICE_SRC"
+  [[ -f "$NGINX_ROLLOUT_TIMER_SRC" ]] || die "Eksik dosya: $NGINX_ROLLOUT_TIMER_SRC"
 }
 
 prompt_default() {
@@ -161,12 +177,12 @@ check_os() {
 }
 
 install_packages() {
-  log "Gerekli paketler kuruluyor (podman + network/storage bağımlılıkları, nginx, git, curl, openssl)..."
+  log "Gerekli paketler kuruluyor (podman + network/storage bağımlılıkları, nginx, certbot, git, curl, openssl)..."
   apt-get update -y
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
     podman uidmap slirp4netns passt fuse-overlayfs \
     apparmor apparmor-utils \
-    nginx git curl openssl
+    nginx certbot git curl openssl
 }
 
 ensure_quadlet_capable_podman() {
@@ -288,6 +304,20 @@ parse_agent_users() {
   done
 }
 
+validate_repo_relative_path() {
+  local rel="$1"
+  [[ -n "$rel" ]] || die "Repo relative path boş olamaz"
+  [[ "$rel" != /* ]] || die "Repo relative path absolute olamaz: $rel"
+  [[ "$rel" != *".."* ]] || die "Repo relative path '..' içeremez: $rel"
+  [[ "$rel" =~ ^[A-Za-z0-9._/-]+$ ]] || die "Geçersiz karakter içeren repo relative path: $rel"
+}
+
+validate_absolute_path() {
+  local p="$1"
+  [[ "$p" == /* ]] || die "Absolute path bekleniyor: $p"
+  [[ "$p" != *".."* ]] || die "Path '..' içeremez: $p"
+}
+
 run_user_systemctl() {
   local user="$1"
   local uid="$2"
@@ -310,6 +340,54 @@ validate_inputs() {
 
   [[ "$SALT_SECRET" =~ ^[A-Za-z0-9._-]+$ ]] || \
     die "SALT_SECRET yalnızca [A-Za-z0-9._-] karakterleri içermeli"
+
+  validate_absolute_path "$PROJECT_DIR"
+  validate_absolute_path "$AGENT_REPO_DIR"
+
+  if [[ "${INSTALL_NGINX_ROLLOUT:-n}" == "y" ]]; then
+    validate_absolute_path "$NGINX_ROLLOUT_REPO_DIR"
+    validate_absolute_path "$NGINX_ROLLOUT_ACME_ROOT"
+    validate_absolute_path "$NGINX_ROLLOUT_STATE_FILE"
+    validate_absolute_path "$NGINX_ROLLOUT_CERTBOT_BIN"
+    validate_repo_relative_path "$NGINX_ROLLOUT_HTTP_DIR"
+    validate_repo_relative_path "$NGINX_ROLLOUT_HTTPS_DIR"
+    validate_repo_relative_path "$NGINX_ROLLOUT_CERT_BUNDLES_DIR"
+  fi
+}
+
+ensure_git_safe_directory() {
+  local user="$1"
+  local path="$2"
+  local existing
+
+  existing="$(runuser -u "$user" -- git config --global --get-all safe.directory 2>/dev/null || true)"
+  if ! printf '%s\n' "$existing" | grep -Fxq "$path"; then
+    runuser -u "$user" -- git config --global --add safe.directory "$path"
+  fi
+}
+
+prepare_shared_repo_dir() {
+  local repo_dir="$1"
+  local repo_parent
+
+  repo_parent="$(dirname "$repo_dir")"
+  install -d -m 0755 "$(dirname "$repo_parent")"
+  install -d -m 2775 -o root -g "$APP_USER" "$repo_parent"
+  install -d -m 2775 -o root -g "$APP_USER" "$repo_dir"
+
+  chgrp -R "$APP_USER" "$repo_dir"
+  find "$repo_dir" -type d -exec chmod g+rws {} +
+  find "$repo_dir" -type f -exec chmod g+rw {} +
+
+  if [[ -d "$repo_dir/.git" ]]; then
+    git -C "$repo_dir" config core.sharedRepository group || true
+  fi
+
+  local existing
+  existing="$(git config --system --get-all safe.directory 2>/dev/null || true)"
+  if ! printf '%s\n' "$existing" | grep -Fxq "$repo_dir"; then
+    git config --system --add safe.directory "$repo_dir"
+  fi
 }
 
 install_agent_for_user() {
@@ -323,6 +401,16 @@ install_agent_for_user() {
 
   log "Agent kuruluyor: $user"
   loginctl enable-linger "$user"
+  if id -nG "$user" | tr ' ' '\n' | grep -Fxq "$APP_USER"; then
+    :
+  else
+    usermod -a -G "$APP_USER" "$user"
+    if systemctl is-active --quiet "user@$uid.service"; then
+      warn "$user için user@$uid.service yeniden başlatılıyor (yeni grup üyeliği için)"
+      systemctl restart "user@$uid.service" || true
+    fi
+  fi
+  ensure_git_safe_directory "$user" "$AGENT_REPO_DIR"
 
   install -d -m 0755 -o "$user" -g "$user" "$home/.local/bin"
   install -d -m 0755 -o "$user" -g "$user" "$home/.config/quadlet-agent"
@@ -339,7 +427,7 @@ install_agent_for_user() {
   cat >"$config_path" <<EOF
 GLOBAL_VERSION_FILE="$VERSION_FILE"
 REPO_URL="$AGENT_REPO_URL"
-REPO_DIR="\$HOME/$AGENT_REPO_SUBDIR"
+REPO_DIR="$AGENT_REPO_DIR"
 SERVICES="$services"
 EOF
   chown "$user:$user" "$config_path"
@@ -357,6 +445,52 @@ EOF
 
   run_user_systemctl "$user" "$uid" daemon-reload
   run_user_systemctl "$user" "$uid" enable --now quadlet-agent.timer
+}
+
+install_nginx_rollout_agent() {
+  log "Nginx+Certbot rollout agent kuruluyor (root systemd timer)..."
+
+  install -m 0755 "$NGINX_ROLLOUT_SCRIPT_SRC" "$NGINX_ROLLOUT_SCRIPT_DST"
+  install -m 0644 "$NGINX_ROLLOUT_SERVICE_SRC" "$NGINX_ROLLOUT_SERVICE_DST"
+  install -m 0644 "$NGINX_ROLLOUT_TIMER_SRC" "$NGINX_ROLLOUT_TIMER_DST"
+
+  install -d -m 0755 "$NGINX_ROLLOUT_ENV_DIR"
+  install -d -m 0755 "$NGINX_ROLLOUT_ACME_ROOT/.well-known/acme-challenge"
+  install -d -m 0755 "$(dirname "$NGINX_ROLLOUT_STATE_FILE")"
+
+  cat >"$NGINX_ROLLOUT_ENV_PATH" <<EOF
+PROJECT_DIR=$PROJECT_DIR
+GLOBAL_VERSION_FILE=$VERSION_FILE
+REPO_URL=$NGINX_ROLLOUT_REPO_URL
+REPO_DIR=$NGINX_ROLLOUT_REPO_DIR
+NGINX_HTTP_DIR=$NGINX_ROLLOUT_HTTP_DIR
+NGINX_HTTPS_DIR=$NGINX_ROLLOUT_HTTPS_DIR
+CERT_BUNDLES_DIR=$NGINX_ROLLOUT_CERT_BUNDLES_DIR
+NGINX_SITE_AVAILABLE_DIR=$NGINX_SITE_AVAILABLE_DIR
+NGINX_SITE_ENABLED_DIR=$NGINX_SITE_ENABLED_DIR
+ACME_CHALLENGE_ROOT=$NGINX_ROLLOUT_ACME_ROOT
+STATE_FILE=$NGINX_ROLLOUT_STATE_FILE
+CERTBOT_BIN=$NGINX_ROLLOUT_CERTBOT_BIN
+EOF
+  chmod 0644 "$NGINX_ROLLOUT_ENV_PATH"
+
+  install -d -m 0755 "$(dirname "$CERTBOT_DEPLOY_HOOK_PATH")"
+  cat >"$CERTBOT_DEPLOY_HOOK_PATH" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+nginx -t
+systemctl reload nginx
+EOF
+  chmod 0755 "$CERTBOT_DEPLOY_HOOK_PATH"
+
+  systemctl daemon-reload
+  if [[ "$NGINX_ROLLOUT_ENABLE_TIMER" == "y" ]]; then
+    systemctl enable --now nginx-rollout.timer
+  else
+    warn "Nginx rollout timer kurulmuş ama aktive edilmedi."
+    warn "Manuel aktivasyon için: systemctl enable --now nginx-rollout.timer"
+  fi
 }
 
 collect_inputs() {
@@ -398,8 +532,23 @@ collect_inputs() {
     ACME_CHALLENGE_ROOT="/var/www/certbot"
   fi
 
-  prompt_default AGENT_REPO_URL "Agent REPO_URL" "https://github.com/org/server-quadlets.git"
-  prompt_default AGENT_REPO_SUBDIR "Agent REPO_DIR alt dizini" "quadlets"
+  prompt_default PROJECT_DIR "Quadlet rollout project dizini" "/opt/quadlet-rollout"
+  VERSION_DIR="$PROJECT_DIR"
+  VERSION_FILE="$VERSION_DIR/global_version"
+  QUADLET_ROLLOUT_REPOS_DIR="$PROJECT_DIR/repos"
+
+  prompt_default AGENT_REPO_URL "Agent/Nginx ortak REPO_URL" "https://github.com/syntaxbender/quadlet-services.git"
+  AGENT_REPO_DIR="$QUADLET_ROLLOUT_REPOS_DIR/$SHARED_REPO_NAME"
+  INSTALL_NGINX_ROLLOUT="y"
+  NGINX_ROLLOUT_REPO_URL="$AGENT_REPO_URL"
+  NGINX_ROLLOUT_REPO_DIR="$AGENT_REPO_DIR"
+  NGINX_ROLLOUT_HTTP_DIR="nginx/http"
+  NGINX_ROLLOUT_HTTPS_DIR="nginx/https"
+  NGINX_ROLLOUT_CERT_BUNDLES_DIR="nginx/cert-bundles"
+  prompt_default NGINX_ROLLOUT_ACME_ROOT "Nginx rollout ACME challenge root" "/var/www/certbot"
+  prompt_default NGINX_ROLLOUT_STATE_FILE "Nginx rollout state dosyası" "$PROJECT_DIR/nginx_seen_version"
+  prompt_default NGINX_ROLLOUT_CERTBOT_BIN "Certbot binary path" "/usr/bin/certbot"
+  NGINX_ROLLOUT_ENABLE_TIMER="y"
 
   local users_input
   prompt_required users_input "Agent kurulacak kullanıcılar (boşluk veya virgül ile ayırın)"
@@ -409,6 +558,7 @@ collect_inputs() {
 summary() {
   local deploy_scheme
   local nginx_activation_note
+  local nginx_rollout_note
   if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
     deploy_scheme="https"
   else
@@ -418,6 +568,11 @@ summary() {
     nginx_activation_note="Nginx config oluşturuldu ancak aktive edilmedi (manuel aktive etmelisin)."
   else
     nginx_activation_note="Nginx config aktivasyon durumu: otomatik."
+  fi
+  if [[ "$INSTALL_NGINX_ROLLOUT" == "y" ]]; then
+    nginx_rollout_note="Kuruldu. Config: $NGINX_ROLLOUT_ENV_PATH | Timer: nginx-rollout.timer (enable=$NGINX_ROLLOUT_ENABLE_TIMER) | Renew hook: $CERTBOT_DEPLOY_HOOK_PATH"
+  else
+    nginx_rollout_note="Kurulmadı."
   fi
 
   cat <<EOF
@@ -437,6 +592,14 @@ GitHub Actions secret:
 
 Nginx:
   $nginx_activation_note
+
+Nginx rollout:
+  $nginx_rollout_note
+
+Ortak repo:
+  REPO_URL=$AGENT_REPO_URL
+  REPO_DIR=$AGENT_REPO_DIR
+  PROJECT_DIR=$PROJECT_DIR
 
 Agent env dosyası:
   Her kullanıcı için: ~/.config/quadlet-agent/$AGENT_ENV_FILENAME
@@ -458,6 +621,10 @@ main() {
   ensure_quadlet_capable_podman
   ensure_service_user
   prepare_version_file
+  prepare_shared_repo_dir "$AGENT_REPO_DIR"
+  if [[ "${INSTALL_NGINX_ROLLOUT:-n}" == "y" && "$NGINX_ROLLOUT_REPO_DIR" != "$AGENT_REPO_DIR" ]]; then
+    prepare_shared_repo_dir "$NGINX_ROLLOUT_REPO_DIR"
+  fi
   build_or_use_image
   write_webhook_quadlet
 
@@ -472,6 +639,10 @@ main() {
     prompt_default services "$user kullanıcısı için SERVICES" "appsvc"
     install_agent_for_user "$user" "$services"
   done
+
+  if [[ "$INSTALL_NGINX_ROLLOUT" == "y" ]]; then
+    install_nginx_rollout_agent
+  fi
 
   summary
 }

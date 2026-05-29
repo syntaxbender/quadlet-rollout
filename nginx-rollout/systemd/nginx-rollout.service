@@ -1,0 +1,9 @@
+[Unit]
+Description=Nginx + Certbot Rollout Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/quadlet-rollout/nginx-rollout.env
+ExecStart=/usr/local/bin/nginx-rollout.sh

@@ -1,7 +1,7 @@
 # ~/.config/quadlet-agent/config
 GLOBAL_VERSION_FILE="/opt/quadlet-rollout/global_version"
-REPO_URL="https://github.com/org/server-quadlets.git"
-REPO_DIR="$HOME/quadlets"
+REPO_URL="https://github.com/syntaxbender/quadlet-services.git"
+REPO_DIR="/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo"
 # Repo içinde kullanıcı yolu sabit kural:
 # $REPO_DIR/quadlet-containers/$USER/
 # Bu dizinin içeriği birebir $HOME altına overwrite edilir (silme yok).

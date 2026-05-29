@@ -38,9 +38,25 @@ if [[ "$NEW_VERSION" == "$OLD_VERSION" ]]; then
   exit 0
 fi
 
+REPO_PARENT="$(dirname "$REPO_DIR")"
+LOCK_FILE="${REPO_LOCK_FILE:-$REPO_PARENT/.quadlet-nginx-shared-repo.lock}"
+mkdir -p "$REPO_PARENT"
+
+if git config --global --get-all safe.directory 2>/dev/null | grep -Fxq "$REPO_DIR"; then
+  :
+else
+  git config --global --add safe.directory "$REPO_DIR" 2>/dev/null || true
+fi
+
+exec 9>"$LOCK_FILE"
+if ! flock -w 60 9; then
+  echo "failed to acquire repo lock: $LOCK_FILE" >&2
+  exit 1
+fi
+
 if [[ ! -d "$REPO_DIR/.git" ]]; then
-  mkdir -p "$(dirname "$REPO_DIR")"
   git clone "$REPO_URL" "$REPO_DIR"
+  git -C "$REPO_DIR" config core.sharedRepository group || true
 else
   git -C "$REPO_DIR" fetch --all --prune
   git -C "$REPO_DIR" pull --ff-only

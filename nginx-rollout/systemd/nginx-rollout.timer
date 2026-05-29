@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Nginx Rollout Agent Periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+RandomizedDelaySec=20s
+Persistent=true
+Unit=nginx-rollout.service
+
+[Install]
+WantedBy=timers.target

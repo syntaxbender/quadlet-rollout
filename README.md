@@ -7,7 +7,10 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - `webhook-app/webhook.py`: Nginx reverse proxy arkasında çalışacak webhook uygulaması
 - `agent/quadlet-agent.sh`: user-space agent script'i
 - `agent/systemd-user/*.service|*.timer`: her kullanıcıya kurulacak user unit dosyaları
+- `nginx-rollout/nginx-rollout.sh`: root seviyesinde nginx+certbot rollout agent
+- `nginx-rollout/systemd/*.service|*.timer`: root rollout agent unit dosyaları
 - `examples/server-quadlets/`: kullanıcı bazlı `.container` repo örneği
+- `examples/nginx/http|https|cert-bundles`: repo tabanlı nginx config + grouped SAN cert örnekleri
 - `examples/nginx/webhook-ingress.example.conf`: webhook domain için Nginx reverse proxy örneği
 - `github-actions.deploy.example.yml`: Actions örnek akışı
 - `install.sh`: Ubuntu 22.04/24.04 için interaktif kurulum script'i
@@ -34,11 +37,44 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 
 - `/opt/quadlet-rollout/global_version` ile local `seen_version` karşılaştırılır
 - Değişim varsa quadlet repo güncellenir
+- Agent ve nginx-rollout aynı repo clone'unu kullanır: `<project_dir>/repos/quadlet-nginx-shared-repo` (default project_dir: `/opt/quadlet-rollout`)
+- Kurulum sırasında agent kullanıcıları `quadlet-rollout` grubuna eklenir; ortak repo bu grupla yazılabilir yapılır
 - Repoda `quadlet-containers/$USER/` varsa içeriği `$HOME/` altına whitelist ile overwrite kopyalanır
 - Sadece `*.container`, `*.service`, `*.timer` dosyaları kopyalanır
 - Kaynak ağaçta symlink varsa güvenlik nedeniyle deploy reddedilir
 - `systemctl --user daemon-reload` ve tanımlı servis restart edilir
 - `install.sh`, her agent kullanıcısı için boş `~/.config/quadlet-agent/app.env` dosyası oluşturur (manuel doldurulur)
+
+## Nginx Rollout Özeti
+
+- Root timer (`nginx-rollout.timer`) `/opt/quadlet-rollout/global_version` değişimini izler
+- Değişim varsa rollout repo `git pull` ile güncellenir
+- Git lock dosyası ile (`.quadlet-nginx-shared-repo.lock`) agent/nginx eşzamanlı pull çakışmaları engellenir
+- Repo `nginx/http/` configleri önce aktive edilir (`nginx -t && reload`)
+- `nginx/cert-bundles/*.env` dosyalarına göre `certbot certonly --webroot --keep-until-expiring --expand` çalışır
+- Her bundle tek certificate lineage olarak yönetilir (`CERT_NAME`) ve çoklu domain (SAN) destekler
+- Cert aşaması başarılıysa `nginx/https/` configleri aktive edilir
+- Son durumda tekrar `nginx -t && systemctl reload nginx` yapılır
+- `nginx_seen_version` state dosyası güncellenir
+- Certbot renew hook (`/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`) otomatik reload sağlar
+
+Örnek repo sözleşmesi:
+
+```text
+quadlet-nginx-shared-repo/
+  quadlet-containers/
+    appuser1/
+      .config/containers/systemd/app.container
+    appuser2/
+      .config/containers/systemd/app.container
+  nginx/
+    http/
+      webhook.example.com.conf
+    https/
+      webhook.example.com.conf
+    cert-bundles/
+      example-main.env
+```
 
 ## Varsayılan Değerler
 
@@ -60,6 +96,8 @@ Kaynak: [webhook.py](/home/syn/Desktop/webhook/webhook-app/webhook.py)
 - Config yolu: `${XDG_CONFIG_HOME:-$HOME/.config}/quadlet-agent/config`
 - Env dosyası: `${XDG_CONFIG_HOME:-$HOME/.config}/quadlet-agent/app.env` (boş oluşturulur)
 - State yolu: `${XDG_STATE_HOME:-$HOME/.local/state}/quadlet-agent/seen_version`
+- Ortak repo URL: `https://github.com/syntaxbender/quadlet-services.git`
+- Ortak repo path: `<project_dir>/repos/quadlet-nginx-shared-repo` (default: `/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo`)
 - Repo kullanıcı dizin kuralı: `$REPO_DIR/quadlet-containers/$USER/`
 - Hedef kök: `$HOME/`
 
@@ -73,6 +111,23 @@ Kaynak: [quadlet-agent.sh](/home/syn/Desktop/webhook/agent/quadlet-agent.sh)
 - Kaçan tur telafisi: `Persistent=true`
 
 Kaynak: [quadlet-agent.timer](/home/syn/Desktop/webhook/agent/systemd-user/quadlet-agent.timer)
+
+### Nginx rollout varsayılanları
+
+- Config yolu: `/etc/quadlet-rollout/nginx-rollout.env`
+- Script yolu: `/usr/local/bin/nginx-rollout.sh`
+- Global version dosyası: `<project_dir>/global_version` (default: `/opt/quadlet-rollout/global_version`)
+- Rollout repo yolu: `<project_dir>/repos/quadlet-nginx-shared-repo` (default: `/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo`)
+- Repo-relative dizinler:
+  - `NGINX_HTTP_DIR=nginx/http`
+  - `NGINX_HTTPS_DIR=nginx/https`
+  - `CERT_BUNDLES_DIR=nginx/cert-bundles`
+- ACME webroot: `/var/www/certbot`
+- State dosyası: `<project_dir>/nginx_seen_version` (default: `/opt/quadlet-rollout/nginx_seen_version`)
+- Certbot binary: `/usr/bin/certbot`
+- Renew hook: `/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`
+
+Kaynak: [nginx-rollout.env.example](/home/syn/Desktop/webhook/nginx-rollout/nginx-rollout.env.example)
 
 ## Değerler Nereden ve Nasıl Güncellenir
 
@@ -99,6 +154,8 @@ Kaynak: [quadlet-agent.timer](/home/syn/Desktop/webhook/agent/systemd-user/quadl
    - `REPO_URL`
    - `REPO_DIR`
    - `SERVICES`
+   - Önerilen `REPO_URL`: `https://github.com/syntaxbender/quadlet-services.git`
+   - Önerilen `REPO_DIR`: `<project_dir>/repos/quadlet-nginx-shared-repo` (default: `/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo`)
 3. Timer bir sonraki turda yeni değerlerle çalışır. Hemen denemek için:
 
 ```bash
@@ -106,6 +163,28 @@ systemctl --user start quadlet-agent.service
 ```
 
 Örnek config: [config.example](/home/syn/Desktop/webhook/agent/config.example)
+
+### Nginx rollout config değerlerini güncelleme
+
+1. Root config dosyasını düzenle: `/etc/quadlet-rollout/nginx-rollout.env`
+2. En az şu değişkenler set olmalı:
+   - `REPO_URL`
+   - `REPO_DIR`
+   - `NGINX_HTTP_DIR`
+   - `NGINX_HTTPS_DIR`
+   - `CERT_BUNDLES_DIR`
+   - `ACME_CHALLENGE_ROOT`
+   - Agent ile aynı repo kullanılabilir (önerilen):
+     - `REPO_URL=https://github.com/syntaxbender/quadlet-services.git`
+     - `REPO_DIR=<project_dir>/repos/quadlet-nginx-shared-repo` (default: `/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo`)
+3. Repo içinde cert bundle dosyalarıyla grouped SAN tanımla:
+   - [example-main.env](/home/syn/Desktop/webhook/examples/nginx/cert-bundles/example-main.env)
+4. Değişiklikten sonra test için:
+
+```bash
+sudo systemctl start nginx-rollout.service
+sudo systemctl status nginx-rollout.service
+```
 
 ### Saat senkronizasyonu ve tolerans (GitHub Actions + Webhook)
 
@@ -204,21 +283,29 @@ Nginx örnek dosyası: [webhook-ingress.example.conf](/home/syn/Desktop/webhook/
 DEPLOY_URL=https://webhook.example.com
 ```
 
+7. Nginx+Certbot rollout agent kullanacaksan repo sözleşmesini uygula:
+
+- HTTP config örneği: [webhook.example.com.conf](/home/syn/Desktop/webhook/examples/nginx/http/webhook.example.com.conf)
+- HTTPS config örneği: [webhook.example.com.conf](/home/syn/Desktop/webhook/examples/nginx/https/webhook.example.com.conf)
+- Cert bundle örneği: [example-main.env](/home/syn/Desktop/webhook/examples/nginx/cert-bundles/example-main.env)
+
 ## Minimum yetki modeli
 
 - Webhook sadece `global_version` yazabilir
 - Agent root değildir, sadece kendi user-space'inde çalışır
 - `systemctl --user` sadece ilgili kullanıcı context'inde çağrılır
+- Nginx/Certbot rollout ayrı root agent ile çalışır; user agent root işlemi yapmaz
 
 ## Interaktif Kurulum Scripti
 
 `install.sh` webhook + agent kurulumunu interaktif olarak yapar:
 
-- Podman/Nginx/paket kurulumu
+- Podman/Nginx/Certbot paket kurulumu
 - `quadlet-rollout` servis kullanıcısı
 - webhook image build ve quadlet unit yazımı
 - Nginx reverse proxy site config oluşturma (opsiyonel)
 - Agent kullanıcıları için `quadlet-agent` kurulum ve timer enable
+- Root `nginx-rollout` agent kurulum (default)
 - Webhook/Nginx config dosyalarını `templates/` altından variable substitution ile render etme
 
 Çalıştırma:
@@ -235,7 +322,11 @@ Script sırasında istenecek temel inputlar:
 - Nginx config `otomatik aktive edilsin mi?` sorusu (varsayılan: hayır)
 - `SALT_SECRET` (boş bırakılırsa otomatik üretilir)
 - `TOKEN_TOLERANCE_MINUTES`
+- Quadlet rollout project dizini (`/opt/quadlet-rollout`)
 - Agent kurulacak Linux kullanıcıları
 - Her kullanıcı için `SERVICES`
+- Ortak repo URL (`https://github.com/syntaxbender/quadlet-services.git`)
+- Ortak repo clone path (otomatik): `<project_dir>/repos/quadlet-nginx-shared-repo`
+- `ACME_CHALLENGE_ROOT`, `CERTBOT_BIN` (rollout timer otomatik enable)
 
 Not (Ubuntu 22.04): Varsayılan repo Podman sürümü eski olabilir. Script Quadlet için `Podman >= 4.6` bekler.
