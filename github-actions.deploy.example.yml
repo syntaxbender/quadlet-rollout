@@ -17,19 +17,14 @@ jobs:
       - name: Push image
         run: echo "push placeholder"
 
-      - name: Derive 10-minute HMAC token
+      - name: Derive HMAC token
         env:
           SALT_SECRET: ${{ secrets.DEPLOY_SALT_SECRET }}
         run: |
-          YEAR=$(date -u +%Y)
-          MONTH=$(date -u +%m)
-          DAY=$(date -u +%d)
-          HOUR=$(date -u +%H)
-          MINUTE=$(date -u +%M)
-          MINUTE_WINDOW=$((10 * (10#$MINUTE / 10)))
-          TIME_WINDOW="$YEAR-$MONTH-$DAY $HOUR:$(printf "%02d" "$MINUTE_WINDOW")"
-          PAYLOAD="$TIME_WINDOW"$'\n'"${GITHUB_SHA,,}"
+          TIME_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          PAYLOAD="$TIME_UTC"$'\n'"${GITHUB_SHA,,}"
           TOKEN=$(printf "%s" "$PAYLOAD" | openssl dgst -sha256 -hmac "$SALT_SECRET" -binary | xxd -p -c 256)
+          echo "DEPLOY_TIME_UTC=$TIME_UTC" >> "$GITHUB_ENV"
           echo "DEPLOY_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
       - name: Notify webhook
@@ -38,4 +33,5 @@ jobs:
         run: |
           curl -fsS -X POST "$DEPLOY_URL/deploy" \
             -H "X-Deploy-Token: $DEPLOY_TOKEN" \
+            -H "X-Deploy-Time-UTC: $DEPLOY_TIME_UTC" \
             -H "X-Deploy-Sha: $GITHUB_SHA"

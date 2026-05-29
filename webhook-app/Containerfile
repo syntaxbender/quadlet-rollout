@@ -1,6 +1,13 @@
 FROM python:3.12-alpine
+ARG APP_USER=quadlet-rollout
+ARG APP_UID=21001
+ARG APP_GID=21001
+
+RUN addgroup -S -g "${APP_GID}" "${APP_USER}" \
+ && adduser -S -D -H -u "${APP_UID}" -G "${APP_USER}" -s /sbin/nologin "${APP_USER}"
+
 WORKDIR /app
 COPY webhook.py /app/webhook.py
 EXPOSE 8080
-USER 65534:65534
+USER ${APP_UID}:${APP_GID}
 ENTRYPOINT ["python3", "/app/webhook.py"]
