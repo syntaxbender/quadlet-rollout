@@ -33,3 +33,15 @@ Webhook kodu, `Containerfile` veya webhook quadlet template değiştiyse:
 git pull
 sudo ./webhook-app/install.sh
 ```
+
+## Hata Notu
+
+`Failed to enable unit: Unit file quadlet-webhook.service does not exist.` görürsen:
+
+- Quadlet generator `.container` dosyasını parse edememiş olabilir.
+- Script artık bu durumda dry-run + journal teşhis çıktısı basar.
+- Sonrasında tekrar çalıştır:
+
+```bash
+sudo ./webhook-app/install.sh
+```

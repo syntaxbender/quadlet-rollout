@@ -48,6 +48,12 @@ die() {
   exit 1
 }
 
+version_ge() {
+  local current="$1"
+  local minimum="$2"
+  [[ "$(printf '%s\n' "$minimum" "$current" | sort -V | head -n1)" == "$minimum" ]]
+}
+
 prompt_default() {
   local __var="$1"
   local prompt="$2"
@@ -152,6 +158,38 @@ validate_inputs() {
   [[ "$SALT_SECRET" =~ ^[A-Za-z0-9._-]+$ ]] || die "SALT_SECRET yalnızca [A-Za-z0-9._-] içermeli"
 }
 
+ensure_quadlet_capable_podman() {
+  command -v podman >/dev/null 2>&1 || die "podman bulunamadı"
+
+  local podman_ver
+  podman_ver="$(podman version --format '{{.Version}}' 2>/dev/null || true)"
+  if [[ -z "$podman_ver" ]]; then
+    warn "Podman versiyonu okunamadı."
+  elif ! version_ge "$podman_ver" "4.6.0"; then
+    die "Quadlet için Podman >= 4.6 gerekiyor. Mevcut: $podman_ver"
+  fi
+
+  if [[ ! -x /usr/lib/systemd/system-generators/podman-system-generator ]] \
+    && [[ ! -x /usr/libexec/podman/quadlet ]]; then
+    die "Quadlet generator bulunamadı. Podman kurulumunu doğrulayın."
+  fi
+}
+
+debug_quadlet_generation_failure() {
+  warn "Quadlet unit generate edilemedi: $WEBHOOK_SERVICE_NAME"
+  warn "Muhtemel neden: .container syntax/unsupported key veya generator eksikliği."
+
+  if [[ -x /usr/libexec/podman/quadlet ]]; then
+    warn "Quadlet dry-run çıktısı (/usr/libexec/podman/quadlet -dryrun):"
+    /usr/libexec/podman/quadlet -dryrun 2>&1 | tail -n 120 >&2 || true
+  fi
+
+  warn "Journal (quadlet/podman-system-generator) son kayıtları:"
+  journalctl -b --no-pager 2>/dev/null \
+    | grep -E "quadlet|podman-system-generator|$WEBHOOK_SERVICE_NAME" \
+    | tail -n 120 >&2 || true
+}
+
 ensure_service_user() {
   if ! getent group "$APP_USER" >/dev/null 2>&1; then
     groupadd --system --gid "$APP_GID" "$APP_USER"
@@ -193,6 +231,14 @@ write_webhook_quadlet() {
 
   chmod 0644 "$WEBHOOK_UNIT_PATH"
   systemctl daemon-reload
+
+  local load_state
+  load_state="$(systemctl show -p LoadState --value "$WEBHOOK_SERVICE_NAME" 2>/dev/null || true)"
+  if [[ -z "$load_state" || "$load_state" == "not-found" ]]; then
+    debug_quadlet_generation_failure
+    die "Unit oluşturulamadı: $WEBHOOK_SERVICE_NAME"
+  fi
+
   systemctl enable --now "$WEBHOOK_SERVICE_NAME"
 }
 
@@ -250,6 +296,7 @@ main() {
   require_files
   collect_missing_inputs
   validate_inputs
+  ensure_quadlet_capable_podman
   ensure_service_user
   prepare_version_file
   build_or_use_image

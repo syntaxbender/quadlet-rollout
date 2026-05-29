@@ -16,11 +16,11 @@ Environment=MAX_HEADER_VALUE_LEN=128
 Volume=/opt/quadlet-rollout:/data:Z
 NoNewPrivileges=true
 ReadOnly=true
-ReadWritePaths=/data
 
 [Service]
 Restart=always
 RestartSec=2
+ReadWritePaths=/data
 
 [Install]
 WantedBy=multi-user.target

@@ -15,11 +15,11 @@ Environment=MAX_HEADER_VALUE_LEN=128
 Volume={{VERSION_DIR}}:/data:Z
 NoNewPrivileges=true
 ReadOnly=true
-ReadWritePaths=/data
 
 [Service]
 Restart=always
 RestartSec=2
+ReadWritePaths=/data
 
 [Install]
 WantedBy=multi-user.target
