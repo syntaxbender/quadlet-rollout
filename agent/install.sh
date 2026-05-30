@@ -12,6 +12,8 @@ SHARED_REPO_NAME="${SHARED_REPO_NAME:-quadlet-nginx-shared-repo}"
 AGENT_REPO_DIR="${AGENT_REPO_DIR:-$PROJECT_DIR/repos/$SHARED_REPO_NAME}"
 AGENT_ENV_FILENAME="${AGENT_ENV_FILENAME:-app.env}"
 TARGET_USER="${TARGET_USER:-}"
+TARGET_USERS_RAW="${TARGET_USERS_RAW:-}"
+TARGET_USERS=()
 
 log() {
   printf '[INFO] %s\n' "$*"
@@ -74,7 +76,23 @@ collect_inputs() {
   prompt_default AGENT_REPO_URL "Agent/Nginx ortak REPO_URL" "$AGENT_REPO_URL"
   AGENT_REPO_DIR="$PROJECT_DIR/repos/$SHARED_REPO_NAME"
 
-  [[ -n "$TARGET_USER" ]] || prompt_required TARGET_USER "Kurulacak Linux kullanıcısı"
+  if [[ -z "${TARGET_USERS_RAW// }" ]]; then
+    TARGET_USERS_RAW="$TARGET_USER"
+  fi
+  [[ -n "${TARGET_USERS_RAW// }" ]] || prompt_required TARGET_USERS_RAW "Kurulacak Linux kullanıcı(lar)ı (boşluk/virgül)"
+}
+
+normalize_target_users() {
+  local normalized user
+  declare -A seen=()
+
+  TARGET_USERS=()
+  normalized="${TARGET_USERS_RAW//,/ }"
+  for user in $normalized; do
+    [[ -n "${seen[$user]:-}" ]] && continue
+    TARGET_USERS+=("$user")
+    seen[$user]=1
+  done
 }
 
 run_user_systemctl() {
@@ -135,9 +153,12 @@ validate_inputs() {
   validate_absolute_path "$PROJECT_DIR"
   validate_absolute_path "$VERSION_FILE"
   validate_absolute_path "$AGENT_REPO_DIR"
-  [[ -n "$TARGET_USER" ]] || die "Kurulacak Linux kullanıcısı boş olamaz"
+  [[ "${#TARGET_USERS[@]}" -gt 0 ]] || die "Kurulacak Linux kullanıcı listesi boş olamaz"
 
-  id -u "$TARGET_USER" >/dev/null 2>&1 || die "Kullanıcı bulunamadı: $TARGET_USER"
+  local user
+  for user in "${TARGET_USERS[@]}"; do
+    id -u "$user" >/dev/null 2>&1 || die "Kullanıcı bulunamadı: $user"
+  done
 
   if ! getent group "$APP_USER" >/dev/null 2>&1; then
     die "Grup bulunamadı: $APP_USER (önce webhook-app/install.sh veya root install.sh çalıştırılmalı)"
@@ -164,7 +185,6 @@ install_agent_for_user() {
     fi
   fi
 
-  prepare_shared_repo_dir "$AGENT_REPO_DIR"
   ensure_git_safe_directory "$user" "$AGENT_REPO_DIR"
 
   install -d -m 0755 -o "$user" -g "$user" "$home/.local/bin"
@@ -202,12 +222,20 @@ EOF_INNER
 }
 
 main() {
+  local user
+
   require_root
   require_files
   collect_inputs
+  normalize_target_users
   validate_inputs
-  install_agent_for_user "$TARGET_USER"
-  log "Agent kurulumu tamamlandı: $TARGET_USER"
+  prepare_shared_repo_dir "$AGENT_REPO_DIR"
+
+  for user in "${TARGET_USERS[@]}"; do
+    install_agent_for_user "$user"
+  done
+
+  log "Agent kurulumu tamamlandı: ${TARGET_USERS[*]}"
 }
 
 main "$@"

@@ -1,6 +1,6 @@
 # agent
 
-Bu bileşen, tek bir Linux kullanıcısı için `quadlet-agent` script + user systemd unit kurar/günceller.
+Bu bileşen, bir veya birden fazla Linux kullanıcısı için `quadlet-agent` script + user systemd unit kurar/günceller.
 
 ## Ne kurar
 
@@ -21,10 +21,12 @@ Bu bileşen, tek bir Linux kullanıcısı için `quadlet-agent` script + user sy
 
 ```bash
 sudo TARGET_USER='appuser1' ./agent/install.sh
+sudo TARGET_USERS_RAW='appuser1,appuser2' ./agent/install.sh
 ```
 
 Script interaktif olarak `PROJECT_DIR` ve `AGENT_REPO_URL` sorar.  
-`TARGET_USER` verilmezse kullanıcıyı ayrıca sorar.
+Kullanıcı listesi `TARGET_USERS_RAW` (virgül/boşluk ayracı) veya `TARGET_USER` ile verilebilir.  
+Hiçbiri verilmezse kullanıcı listesi interaktif sorulur.
 
 ## Sık kullanılan env override'ları
 
@@ -38,4 +40,7 @@ sudo TARGET_USER='appuser1' AGENT_REPO_URL='https://github.com/syntaxbender/quad
 for u in appuser1 appuser2; do
   sudo TARGET_USER="$u" ./agent/install.sh
 done
+
+# veya tek komutla
+sudo TARGET_USERS_RAW='appuser1,appuser2' ./agent/install.sh
 ```
