@@ -39,6 +39,16 @@ prompt_required() {
   done
 }
 
+prompt_default() {
+  local __var="$1"
+  local prompt="$2"
+  local default="$3"
+  local value
+  read -r -p "$prompt [$default]: " value
+  value="${value:-$default}"
+  printf -v "$__var" '%s' "$value"
+}
+
 require_root() {
   if [[ "$EUID" -ne 0 ]]; then
     die "Bu script root olarak çalıştırılmalı. Örn: sudo ./agent/install.sh"
@@ -55,6 +65,16 @@ validate_absolute_path() {
   local p="$1"
   [[ "$p" == /* ]] || die "Absolute path bekleniyor: $p"
   [[ "$p" != *".."* ]] || die "Path '..' içeremez: $p"
+}
+
+collect_inputs() {
+  prompt_default PROJECT_DIR "Quadlet rollout project dizini" "$PROJECT_DIR"
+  VERSION_FILE="$PROJECT_DIR/global_version"
+
+  prompt_default AGENT_REPO_URL "Agent/Nginx ortak REPO_URL" "$AGENT_REPO_URL"
+  AGENT_REPO_DIR="$PROJECT_DIR/repos/$SHARED_REPO_NAME"
+
+  [[ -n "$TARGET_USER" ]] || prompt_required TARGET_USER "Kurulacak Linux kullanıcısı"
 }
 
 run_user_systemctl() {
@@ -115,8 +135,7 @@ validate_inputs() {
   validate_absolute_path "$PROJECT_DIR"
   validate_absolute_path "$VERSION_FILE"
   validate_absolute_path "$AGENT_REPO_DIR"
-
-  [[ -n "$TARGET_USER" ]] || prompt_required TARGET_USER "Kurulacak Linux kullanıcısı"
+  [[ -n "$TARGET_USER" ]] || die "Kurulacak Linux kullanıcısı boş olamaz"
 
   id -u "$TARGET_USER" >/dev/null 2>&1 || die "Kullanıcı bulunamadı: $TARGET_USER"
 
@@ -185,6 +204,7 @@ EOF_INNER
 main() {
   require_root
   require_files
+  collect_inputs
   validate_inputs
   install_agent_for_user "$TARGET_USER"
   log "Agent kurulumu tamamlandı: $TARGET_USER"

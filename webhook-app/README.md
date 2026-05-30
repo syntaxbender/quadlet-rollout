@@ -16,10 +16,19 @@ Bu bileşen, deploy webhook container'ını ve (istersen) webhook domain için N
 sudo ./webhook-app/install.sh
 ```
 
+Script interaktif olarak en az şu alanları sorar:
+
+- `PROJECT_DIR`
+- `WEBHOOK_DOMAIN`
+- `TOKEN_TOLERANCE_MINUTES`
+- `CONFIGURE_NGINX` (+ seçime göre `NGINX_ACTIVATE_CONFIG`, `NGINX_ENABLE_SSL`)
+
+`SALT_SECRET` sorulmaz; her kurulumda `openssl` ile otomatik üretilir ve çıktı olarak basılır.
+
 ## Sık kullanılan env override'ları
 
 ```bash
-sudo SALT_SECRET='...' WEBHOOK_IMAGE='ghcr.io/org/webhook:latest' BUILD_IMAGE='n' ./webhook-app/install.sh
+sudo PROJECT_DIR='/opt/quadlet-rollout' TOKEN_TOLERANCE_MINUTES='5' ./webhook-app/install.sh
 ```
 
 ```bash
@@ -42,9 +51,9 @@ Akış:
 
 İlgili env'ler:
 
-- `CERTBOT_EMAIL` (zorunlu; script sorar)
+- `CERTBOT_EMAIL` (opsiyonel; boşsa `--register-unsafely-without-email` kullanılır)
 - `CERTBOT_BIN` (default: `/usr/bin/certbot`)
-- `CERTBOT_CERT_NAME` (default: `WEBHOOK_DOMAIN`)
+- `CERTBOT_CERT_NAME` (opsiyonel; boşsa certbot default cert adı kullanılır)
 - `ACME_CHALLENGE_ROOT` (default: `/var/www/certbot`)
 
 Örnek:
@@ -54,7 +63,6 @@ sudo WEBHOOK_DOMAIN='webhook.example.com' \
   CONFIGURE_NGINX='y' \
   NGINX_ENABLE_SSL='y' \
   NGINX_ACTIVATE_CONFIG='y' \
-  CERTBOT_EMAIL='info@example.com' \
   ./webhook-app/install.sh
 ```
 

@@ -25,7 +25,6 @@ VERSION_FILE="${VERSION_FILE:-$VERSION_DIR/global_version}"
 WEBHOOK_DOMAIN="${WEBHOOK_DOMAIN:-webhook.example.com}"
 WEBHOOK_LOCAL_PORT="${WEBHOOK_LOCAL_PORT:-18080}"
 TOKEN_TOLERANCE_MINUTES="${TOKEN_TOLERANCE_MINUTES:-5}"
-BUILD_IMAGE="${BUILD_IMAGE:-y}"
 WEBHOOK_IMAGE="${WEBHOOK_IMAGE:-localhost/quadlet-webhook:latest}"
 CONFIGURE_NGINX="${CONFIGURE_NGINX:-n}"
 NGINX_ENABLE_SSL="${NGINX_ENABLE_SSL:-n}"
@@ -35,7 +34,7 @@ SSL_CERT_PATH="${SSL_CERT_PATH:-}"
 SSL_KEY_PATH="${SSL_KEY_PATH:-}"
 CERTBOT_BIN="${CERTBOT_BIN:-/usr/bin/certbot}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
-CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-$WEBHOOK_DOMAIN}"
+CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-}"
 SALT_SECRET="${SALT_SECRET:-}"
 
 log() {
@@ -131,21 +130,38 @@ require_files() {
   [[ -f "$NGINX_SITE_TEMPLATE_PATH_HTTP" ]] || die "Eksik template: $NGINX_SITE_TEMPLATE_PATH_HTTP"
 }
 
+collect_inputs() {
+  prompt_default PROJECT_DIR "Quadlet rollout project dizini" "$PROJECT_DIR"
+  VERSION_DIR="$PROJECT_DIR"
+  VERSION_FILE="$VERSION_DIR/global_version"
+
+  prompt_default WEBHOOK_DOMAIN "Webhook domain" "$WEBHOOK_DOMAIN"
+  prompt_default TOKEN_TOLERANCE_MINUTES "TOKEN_TOLERANCE_MINUTES" "$TOKEN_TOLERANCE_MINUTES"
+
+  prompt_yes_no CONFIGURE_NGINX "Nginx reverse proxy yapılandırılsın mı?" "$CONFIGURE_NGINX"
+  if [[ "$CONFIGURE_NGINX" == "y" ]]; then
+    prompt_yes_no NGINX_ACTIVATE_CONFIG "Oluşturulan Nginx config otomatik aktive edilsin mi?" "$NGINX_ACTIVATE_CONFIG"
+    prompt_yes_no NGINX_ENABLE_SSL "Nginx üzerinde SSL/TLS aktif edilsin mi?" "$NGINX_ENABLE_SSL"
+  else
+    NGINX_ACTIVATE_CONFIG="n"
+    NGINX_ENABLE_SSL="n"
+  fi
+}
+
 collect_missing_inputs() {
-  if [[ -z "$SALT_SECRET" ]]; then
+  if [[ -n "$SALT_SECRET" ]]; then
+    warn "SALT_SECRET manuel verilmiş; otomatik üretim yerine bu değer kullanılacak."
+  else
     SALT_SECRET="$(openssl rand -hex 32)"
-    warn "SALT_SECRET env verilmedi, otomatik üretildi. Değeri güvenli bir yere kaydet."
+    log "SALT_SECRET otomatik üretildi: $SALT_SECRET"
+    warn "SALT_SECRET değerini güvenli şekilde saklayın (GitHub Actions secret vb.)."
   fi
 
   if [[ "$CONFIGURE_NGINX" == "y" ]]; then
     if [[ "$NGINX_ENABLE_SSL" == "y" ]]; then
-      [[ -n "$SSL_CERT_PATH" ]] || prompt_default SSL_CERT_PATH "TLS fullchain path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/fullchain.pem"
-      [[ -n "$SSL_KEY_PATH" ]] || prompt_default SSL_KEY_PATH "TLS private key path" "/etc/letsencrypt/live/$WEBHOOK_DOMAIN/privkey.pem"
-      [[ -n "$ACME_CHALLENGE_ROOT" ]] || prompt_default ACME_CHALLENGE_ROOT "ACME challenge root" "/var/www/certbot"
-      if [[ "$NGINX_ACTIVATE_CONFIG" == "y" ]]; then
-        [[ -n "$CERTBOT_EMAIL" ]] || prompt_default CERTBOT_EMAIL "Certbot account email" "info@$WEBHOOK_DOMAIN"
-        [[ -n "$CERTBOT_CERT_NAME" ]] || prompt_default CERTBOT_CERT_NAME "Certbot cert name" "$WEBHOOK_DOMAIN"
-      fi
+      SSL_CERT_PATH="${SSL_CERT_PATH:-/etc/letsencrypt/live/$WEBHOOK_DOMAIN/fullchain.pem}"
+      SSL_KEY_PATH="${SSL_KEY_PATH:-/etc/letsencrypt/live/$WEBHOOK_DOMAIN/privkey.pem}"
+      ACME_CHALLENGE_ROOT="${ACME_CHALLENGE_ROOT:-/var/www/certbot}"
     else
       SSL_CERT_PATH=""
       SSL_KEY_PATH=""
@@ -166,10 +182,10 @@ validate_inputs() {
   [[ "$SALT_SECRET" =~ ^[A-Za-z0-9._-]+$ ]] || die "SALT_SECRET yalnızca [A-Za-z0-9._-] içermeli"
 
   if [[ "$CONFIGURE_NGINX" == "y" && "$NGINX_ENABLE_SSL" == "y" && "$NGINX_ACTIVATE_CONFIG" == "y" ]]; then
-    [[ "$CERTBOT_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || \
-      die "CERTBOT_EMAIL geçersiz formatta"
     [[ "$ACME_CHALLENGE_ROOT" == /* ]] || die "ACME_CHALLENGE_ROOT absolute path olmalı"
     [[ "$CERTBOT_BIN" == /* ]] || die "CERTBOT_BIN absolute path olmalı"
+    [[ -z "$CERTBOT_EMAIL" || "$CERTBOT_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || \
+      die "CERTBOT_EMAIL geçersiz formatta"
   fi
 }
 
@@ -255,12 +271,8 @@ prepare_version_file() {
 }
 
 build_or_use_image() {
-  if [[ "$BUILD_IMAGE" == "y" ]]; then
-    log "Webhook imajı build ediliyor: $WEBHOOK_IMAGE"
-    podman build -t "$WEBHOOK_IMAGE" "$SCRIPT_DIR"
-  else
-    log "Webhook için mevcut imaj kullanılacak: $WEBHOOK_IMAGE"
-  fi
+  log "Webhook imajı build ediliyor: $WEBHOOK_IMAGE"
+  podman build -t "$WEBHOOK_IMAGE" "$SCRIPT_DIR"
 }
 
 write_webhook_quadlet() {
@@ -311,8 +323,6 @@ request_or_renew_webhook_cert() {
     certonly
     --webroot
     -w "$ACME_CHALLENGE_ROOT"
-    --cert-name "$CERTBOT_CERT_NAME"
-    --email "$CERTBOT_EMAIL"
     --agree-tos
     --no-eff-email
     --non-interactive
@@ -322,7 +332,17 @@ request_or_renew_webhook_cert() {
     -d "$WEBHOOK_DOMAIN"
   )
 
-  log "certbot certonly: cert_name=$CERTBOT_CERT_NAME domain=$WEBHOOK_DOMAIN"
+  if [[ -n "$CERTBOT_CERT_NAME" ]]; then
+    certbot_args+=( --cert-name "$CERTBOT_CERT_NAME" )
+  fi
+
+  if [[ -n "$CERTBOT_EMAIL" ]]; then
+    certbot_args+=( --email "$CERTBOT_EMAIL" )
+  else
+    certbot_args+=( --register-unsafely-without-email )
+  fi
+
+  log "certbot certonly: domain=$WEBHOOK_DOMAIN cert_name=${CERTBOT_CERT_NAME:-<default>} email=${CERTBOT_EMAIL:-<none>}"
   "$CERTBOT_BIN" "${certbot_args[@]}"
 }
 
@@ -403,6 +423,7 @@ write_nginx_site() {
 main() {
   require_root
   require_files
+  collect_inputs
   collect_missing_inputs
   validate_inputs
   ensure_quadlet_capable_podman

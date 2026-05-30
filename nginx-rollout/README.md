@@ -16,6 +16,9 @@ Bu bileşen, root seviyesinde Nginx + Certbot rollout agent'ını kurar/güncell
 sudo ./nginx-rollout/install.sh
 ```
 
+Script interaktif olarak `PROJECT_DIR` ve `NGINX_ROLLOUT_REPO_URL` sorar.  
+Diğer path/env değerleri varsayılan/hardcoded akışla türetilir ve `nginx-rollout.timer` varsayılan olarak aktif edilir.
+
 ## Sık kullanılan env override'ları
 
 ```bash

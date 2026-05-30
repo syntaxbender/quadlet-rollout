@@ -23,7 +23,8 @@ Bu bileşen, tek bir Linux kullanıcısı için `quadlet-agent` script + user sy
 sudo TARGET_USER='appuser1' ./agent/install.sh
 ```
 
-Env verilmezse script kullanıcıyı interaktif sorar.
+Script interaktif olarak `PROJECT_DIR` ve `AGENT_REPO_URL` sorar.  
+`TARGET_USER` verilmezse kullanıcıyı ayrıca sorar.
 
 ## Sık kullanılan env override'ları
 

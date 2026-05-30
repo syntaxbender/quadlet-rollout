@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd /
 
 APP_USER="${APP_USER:-quadlet-rollout}"
 PROJECT_DIR="${PROJECT_DIR:-/opt/quadlet-rollout}"
@@ -43,6 +44,16 @@ die() {
   exit 1
 }
 
+prompt_default() {
+  local __var="$1"
+  local prompt="$2"
+  local default="$3"
+  local value
+  read -r -p "$prompt [$default]: " value
+  value="${value:-$default}"
+  printf -v "$__var" '%s' "$value"
+}
+
 require_root() {
   if [[ "$EUID" -ne 0 ]]; then
     die "Bu script root olarak çalıştırılmalı. Örn: sudo ./nginx-rollout/install.sh"
@@ -67,6 +78,18 @@ validate_repo_relative_path() {
   [[ "$rel" != /* ]] || die "Repo relative path absolute olamaz: $rel"
   [[ "$rel" != *".."* ]] || die "Repo relative path '..' içeremez: $rel"
   [[ "$rel" =~ ^[A-Za-z0-9._/-]+$ ]] || die "Geçersiz karakter içeren repo relative path: $rel"
+}
+
+collect_inputs() {
+  prompt_default PROJECT_DIR "Quadlet rollout project dizini" "$PROJECT_DIR"
+  VERSION_FILE="$PROJECT_DIR/global_version"
+  NGINX_ROLLOUT_REPO_DIR="$PROJECT_DIR/repos/$SHARED_REPO_NAME"
+  NGINX_ROLLOUT_STATE_FILE="$PROJECT_DIR/nginx_seen_version"
+
+  prompt_default NGINX_ROLLOUT_REPO_URL "Agent/Nginx ortak REPO_URL" "$NGINX_ROLLOUT_REPO_URL"
+
+  # Kullanıcıya sorulmadan default aktif bırakılır.
+  NGINX_ROLLOUT_ENABLE_TIMER="y"
 }
 
 prepare_shared_repo_dir() {
@@ -158,6 +181,7 @@ EOF_INNER
 main() {
   require_root
   require_files
+  collect_inputs
   validate_inputs
   install_nginx_rollout_agent
   log "Nginx rollout kurulumu tamamlandı. Config: $NGINX_ROLLOUT_ENV_PATH"
