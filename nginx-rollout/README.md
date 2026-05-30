@@ -7,7 +7,7 @@ Bu bileşen, root seviyesinde Nginx + Certbot rollout agent'ını kurar/güncell
 - `/usr/local/bin/nginx-rollout.sh`
 - `/etc/systemd/system/nginx-rollout.service`
 - `/etc/systemd/system/nginx-rollout.timer`
-- `/etc/quadlet-rollout/nginx-rollout.env`
+- `<project_dir>/nginx-rollout.env` (default: `/opt/quadlet-rollout/nginx-rollout.env`)
 - `/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`
 
 ## Çalıştırma

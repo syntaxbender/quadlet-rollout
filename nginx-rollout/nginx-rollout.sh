@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_FILE="${NGINX_ROLLOUT_CONFIG:-/etc/quadlet-rollout/nginx-rollout.env}"
+CONFIG_FILE="${NGINX_ROLLOUT_CONFIG:-/opt/quadlet-rollout/nginx-rollout.env}"
 
 log() {
   printf '[INFO] %s\n' "$*"

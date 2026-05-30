@@ -5,5 +5,5 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-EnvironmentFile=/etc/quadlet-rollout/nginx-rollout.env
+Environment=NGINX_ROLLOUT_CONFIG=__NGINX_ROLLOUT_ENV_PATH__
 ExecStart=/usr/local/bin/nginx-rollout.sh

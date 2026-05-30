@@ -121,7 +121,7 @@ Kaynak: [quadlet-agent.timer](/home/syn/Desktop/webhook/agent/systemd-user/quadl
 
 ### Nginx rollout varsayılanları
 
-- Config yolu: `/etc/quadlet-rollout/nginx-rollout.env`
+- Config yolu: `<project_dir>/nginx-rollout.env` (default: `/opt/quadlet-rollout/nginx-rollout.env`)
 - Script yolu: `/usr/local/bin/nginx-rollout.sh`
 - Global version dosyası: `<project_dir>/global_version` (default: `/opt/quadlet-rollout/global_version`)
 - Rollout repo yolu: `<project_dir>/repos/quadlet-nginx-shared-repo` (default: `/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo`)
@@ -172,7 +172,7 @@ systemctl --user start quadlet-agent.service
 
 ### Nginx rollout config değerlerini güncelleme
 
-1. Root config dosyasını düzenle: `/etc/quadlet-rollout/nginx-rollout.env`
+1. Root config dosyasını düzenle: `<project_dir>/nginx-rollout.env` (default: `/opt/quadlet-rollout/nginx-rollout.env`)
 2. En az şu değişkenler set olmalı:
    - `REPO_URL`
    - `REPO_DIR`

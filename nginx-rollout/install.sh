@@ -25,8 +25,8 @@ NGINX_ROLLOUT_SCRIPT_SRC="$SCRIPT_DIR/nginx-rollout.sh"
 NGINX_ROLLOUT_SERVICE_SRC="$SCRIPT_DIR/systemd/nginx-rollout.service"
 NGINX_ROLLOUT_TIMER_SRC="$SCRIPT_DIR/systemd/nginx-rollout.timer"
 NGINX_ROLLOUT_SCRIPT_DST="/usr/local/bin/nginx-rollout.sh"
-NGINX_ROLLOUT_ENV_DIR="/etc/quadlet-rollout"
-NGINX_ROLLOUT_ENV_PATH="$NGINX_ROLLOUT_ENV_DIR/nginx-rollout.env"
+NGINX_ROLLOUT_ENV_DIR="${NGINX_ROLLOUT_ENV_DIR:-$PROJECT_DIR}"
+NGINX_ROLLOUT_ENV_PATH="${NGINX_ROLLOUT_ENV_PATH:-$NGINX_ROLLOUT_ENV_DIR/nginx-rollout.env}"
 NGINX_ROLLOUT_SERVICE_DST="/etc/systemd/system/nginx-rollout.service"
 NGINX_ROLLOUT_TIMER_DST="/etc/systemd/system/nginx-rollout.timer"
 CERTBOT_DEPLOY_HOOK_PATH="/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh"
@@ -52,6 +52,10 @@ prompt_default() {
   read -r -p "$prompt [$default]: " value
   value="${value:-$default}"
   printf -v "$__var" '%s' "$value"
+}
+
+escape_sed_replacement() {
+  printf '%s' "$1" | sed -e 's/[\\/&|]/\\&/g'
 }
 
 require_root() {
@@ -82,6 +86,8 @@ validate_repo_relative_path() {
 
 collect_inputs() {
   prompt_default PROJECT_DIR "Quadlet rollout project dizini" "$PROJECT_DIR"
+  NGINX_ROLLOUT_ENV_DIR="$PROJECT_DIR"
+  NGINX_ROLLOUT_ENV_PATH="$NGINX_ROLLOUT_ENV_DIR/nginx-rollout.env"
   VERSION_FILE="$PROJECT_DIR/global_version"
   NGINX_ROLLOUT_REPO_DIR="$PROJECT_DIR/repos/$SHARED_REPO_NAME"
   NGINX_ROLLOUT_STATE_FILE="$PROJECT_DIR/nginx_seen_version"
@@ -132,12 +138,18 @@ validate_inputs() {
 
 install_nginx_rollout_agent() {
   log "Nginx+Certbot rollout agent kuruluyor (root systemd timer)..."
+  local env_path_escaped
 
   prepare_shared_repo_dir "$NGINX_ROLLOUT_REPO_DIR"
 
   install -m 0755 "$NGINX_ROLLOUT_SCRIPT_SRC" "$NGINX_ROLLOUT_SCRIPT_DST"
   install -m 0644 "$NGINX_ROLLOUT_SERVICE_SRC" "$NGINX_ROLLOUT_SERVICE_DST"
   install -m 0644 "$NGINX_ROLLOUT_TIMER_SRC" "$NGINX_ROLLOUT_TIMER_DST"
+  env_path_escaped="$(escape_sed_replacement "$NGINX_ROLLOUT_ENV_PATH")"
+  sed -i "s|__NGINX_ROLLOUT_ENV_PATH__|$env_path_escaped|g" "$NGINX_ROLLOUT_SERVICE_DST"
+  if grep -Fq "__NGINX_ROLLOUT_ENV_PATH__" "$NGINX_ROLLOUT_SERVICE_DST"; then
+    die "service template render hatası: $NGINX_ROLLOUT_SERVICE_DST"
+  fi
 
   install -d -m 0755 "$NGINX_ROLLOUT_ENV_DIR"
   install -d -m 0755 "$NGINX_ROLLOUT_ACME_ROOT/.well-known/acme-challenge"
