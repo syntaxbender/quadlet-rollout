@@ -83,6 +83,8 @@ def atomic_write(path: str, content: str) -> None:
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
+        # Global version dosyası user-agent'lar tarafından okunabilmeli.
+        os.chmod(tmp_path, 0o644)
         os.replace(tmp_path, path)
     finally:
         try:

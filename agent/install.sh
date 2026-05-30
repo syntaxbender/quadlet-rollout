@@ -199,7 +199,12 @@ prepare_global_version_file() {
   project_parent="$(dirname "$PROJECT_DIR")"
   install -d -m 0755 "$project_parent"
   install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$PROJECT_DIR"
-  install -m 0644 -o "$APP_USER" -g "$APP_USER" /dev/null "$VERSION_FILE"
+  if [[ ! -f "$VERSION_FILE" ]]; then
+    install -m 0644 -o "$APP_USER" -g "$APP_USER" /dev/null "$VERSION_FILE"
+  else
+    chown "$APP_USER:$APP_USER" "$VERSION_FILE"
+    chmod 0644 "$VERSION_FILE"
+  fi
 
   log "Global version dosyası hazırlandı: $VERSION_FILE"
 }
