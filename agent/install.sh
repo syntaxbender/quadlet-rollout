@@ -107,6 +107,12 @@ run_user_systemctl() {
     systemctl --user "$@"
 }
 
+run_as_user() {
+  local user="$1"
+  shift
+  runuser -u "$user" -- "$@"
+}
+
 user_unit_enabled_state() {
   local user="$1"
   local uid="$2"
@@ -147,11 +153,14 @@ ensure_git_safe_directory() {
 prepare_shared_repo_dir() {
   local repo_dir="$1"
   local repo_parent
+  local lock_file
 
   repo_parent="$(dirname "$repo_dir")"
+  lock_file="$repo_parent/.quadlet-nginx-shared-repo.lock"
   install -d -m 0755 "$(dirname "$repo_parent")"
   install -d -m 2775 -o root -g "$APP_USER" "$repo_parent"
   install -d -m 2775 -o root -g "$APP_USER" "$repo_dir"
+  install -m 0664 -o root -g "$APP_USER" /dev/null "$lock_file"
 
   chgrp -R "$APP_USER" "$repo_dir"
   find "$repo_dir" -type d -exec chmod g+rws {} +
@@ -187,10 +196,12 @@ validate_inputs() {
 install_agent_for_user() {
   local user="$1"
   local uid home config_path linger_state enabled_state active_state
+  local lock_file
 
   uid="$(id -u "$user")"
   home="$(getent passwd "$user" | cut -d: -f6)"
   [[ -n "$home" ]] || die "Home dizini okunamadı: $user"
+  lock_file="$(dirname "$AGENT_REPO_DIR")/.quadlet-nginx-shared-repo.lock"
 
   log "Agent kuruluyor: $user (uid=$uid home=$home)"
   loginctl enable-linger "$user"
@@ -210,6 +221,10 @@ install_agent_for_user() {
 
   log "Git safe.directory kontrolü: $AGENT_REPO_DIR ($user)"
   ensure_git_safe_directory "$user" "$AGENT_REPO_DIR"
+
+  log "Kullanıcı dizinleri hazırlanıyor ve ownership düzeltiliyor"
+  install -d -m 0700 -o "$user" -g "$user" "$home/.config" "$home/.local" "$home/.local/state"
+  chown -R "$user:$user" "$home/.config" "$home/.local"
 
   log "Kullanıcı dizinleri hazırlanıyor: $home/.local/bin ve .config yolları"
   install -d -m 0755 -o "$user" -g "$user" "$home/.local/bin"
@@ -234,6 +249,18 @@ EOF_INNER
   chmod 0644 "$config_path"
   log "Config yazıldı: $config_path"
   log "Not: env dosyaları rollout sırasında unit dosyasının yanında otomatik oluşturulur"
+
+  if run_as_user "$user" test -r "$VERSION_FILE"; then
+    log "Version file erişimi OK ($user): $VERSION_FILE"
+  else
+    die "Version file kullanıcı tarafından okunamıyor ($user): $VERSION_FILE"
+  fi
+
+  if run_as_user "$user" test -w "$lock_file"; then
+    log "Repo lock dosyası erişimi OK ($user): $lock_file"
+  else
+    die "Repo lock dosyası kullanıcı tarafından yazılamıyor ($user): $lock_file"
+  fi
 
   log "User systemd daemon-reload ve timer enable --now çalıştırılıyor"
   run_user_systemctl "$user" "$uid" daemon-reload

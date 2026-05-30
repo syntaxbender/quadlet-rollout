@@ -101,11 +101,14 @@ collect_inputs() {
 prepare_shared_repo_dir() {
   local repo_dir="$1"
   local repo_parent
+  local lock_file
 
   repo_parent="$(dirname "$repo_dir")"
+  lock_file="$repo_parent/.quadlet-nginx-shared-repo.lock"
   install -d -m 0755 "$(dirname "$repo_parent")"
   install -d -m 2775 -o root -g "$APP_USER" "$repo_parent"
   install -d -m 2775 -o root -g "$APP_USER" "$repo_dir"
+  install -m 0664 -o root -g "$APP_USER" /dev/null "$lock_file"
 
   chgrp -R "$APP_USER" "$repo_dir"
   find "$repo_dir" -type d -exec chmod g+rws {} +
