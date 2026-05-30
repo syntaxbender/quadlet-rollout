@@ -37,6 +37,16 @@ Installer her çalışmada permission self-heal yapar:
 - ortak repo lock dosyası (`.quadlet-nginx-shared-repo.lock`) ve repo dizini grup yazılabilir hale getirilir
 - kullanıcı home altındaki `.config/.local` ownership'i kullanıcıya geri alınır
 
+Kurulumla birlikte `/usr/local/bin/quadlet-agentctl` yardımcı aracı da kurulur:
+
+```bash
+sudo quadlet-agentctl status appuser1 appuser2
+sudo quadlet-agentctl run appuser1
+sudo quadlet-agentctl logs appuser1
+```
+
+Bu araç `XDG_RUNTIME_DIR`/DBUS ayarını kendi yapar; `systemctl --user` için elle env vermen gerekmez.
+
 ## Sık kullanılan env override'ları
 
 ```bash

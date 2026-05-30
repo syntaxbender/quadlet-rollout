@@ -58,6 +58,7 @@ require_root() {
 
 require_files() {
   [[ -f "$SCRIPT_DIR/quadlet-agent.sh" ]] || die "Eksik dosya: $SCRIPT_DIR/quadlet-agent.sh"
+  [[ -f "$SCRIPT_DIR/quadlet-agentctl.sh" ]] || die "Eksik dosya: $SCRIPT_DIR/quadlet-agentctl.sh"
   [[ -f "$SCRIPT_DIR/systemd-user/quadlet-agent.service" ]] || die "Eksik dosya: $SCRIPT_DIR/systemd-user/quadlet-agent.service"
   [[ -f "$SCRIPT_DIR/systemd-user/quadlet-agent.timer" ]] || die "Eksik dosya: $SCRIPT_DIR/systemd-user/quadlet-agent.timer"
 }
@@ -328,7 +329,10 @@ main() {
     install_agent_for_user "$user"
   done
 
+  install -m 0755 "$SCRIPT_DIR/quadlet-agentctl.sh" /usr/local/bin/quadlet-agentctl
+
   log "Agent kurulumu tamamlandı: ${TARGET_USERS[*]}"
+  log "Durum kontrolü: sudo quadlet-agentctl status ${TARGET_USERS[*]}"
 }
 
 main "$@"
