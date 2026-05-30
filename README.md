@@ -14,7 +14,7 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - `examples/nginx/webhook-ingress.example.conf`: webhook domain için Nginx reverse proxy örneği
 - `github-actions.deploy.example.yml`: Actions örnek akışı
 - `install.sh`: Ubuntu 22.04/24.04 için interaktif kurulum script'i
-- `templates/`: `install.sh` tarafından render edilen webhook quadlet ve nginx config template'leri
+- `templates/`: bileşen installer'ları tarafından render edilen webhook quadlet ve nginx config template'leri
 
 ## Webhook Özeti
 
@@ -299,15 +299,11 @@ DEPLOY_URL=https://webhook.example.com
 
 ## Interaktif Kurulum Scripti
 
-`install.sh` webhook + agent kurulumunu interaktif olarak yapar:
+`install.sh` kök orchestrator scriptidir. Kurulum işini doğrudan yapmaz; aşağıdaki installer'ları sırayla tetikler:
 
-- Podman/Nginx/Certbot paket kurulumu
-- `quadlet-rollout` servis kullanıcısı
-- webhook image build ve quadlet unit yazımı
-- Nginx reverse proxy site config oluşturma (opsiyonel)
-- Agent kullanıcıları için `quadlet-agent` kurulum ve timer enable
-- Root `nginx-rollout` agent kurulum (default)
-- Webhook/Nginx config dosyalarını `templates/` altından variable substitution ile render etme
+- [webhook-app/install.sh](/home/syn/Desktop/webhook/webhook-app/install.sh)
+- [agent/install.sh](/home/syn/Desktop/webhook/agent/install.sh) (her kullanıcı için)
+- [nginx-rollout/install.sh](/home/syn/Desktop/webhook/nginx-rollout/install.sh)
 
 Çalıştırma:
 
@@ -316,18 +312,14 @@ chmod +x ./install.sh
 sudo ./install.sh
 ```
 
-Script sırasında istenecek temel inputlar:
+Kök scriptte istenecek temel inputlar:
 
-- Webhook domain (`webhook.example.com`)
-- Nginx için `SSL/TLS aktif edilsin mi?` sorusu
-- Nginx config `otomatik aktive edilsin mi?` sorusu (varsayılan: hayır)
-- `SALT_SECRET` (boş bırakılırsa otomatik üretilir)
-- `TOKEN_TOLERANCE_MINUTES`
 - Quadlet rollout project dizini (`/opt/quadlet-rollout`)
-- Agent kurulacak Linux kullanıcıları
-- Ortak repo URL (`https://github.com/syntaxbender/quadlet-services.git`)
-- Ortak repo clone path (otomatik): `<project_dir>/repos/quadlet-nginx-shared-repo`
-- `ACME_CHALLENGE_ROOT`, `CERTBOT_BIN` (rollout timer otomatik enable)
+- Agent/Nginx ortak repo URL (`https://github.com/syntaxbender/quadlet-services.git`)
+- Agent kurulacak Linux kullanıcıları (boşlukla ayrılmış liste)
+
+Sonrasında her alt installer kendi bileşenine ait soruları interaktif olarak sorar.
+Not: Kök script paket kurmaz; gerekli paketlerin sistemde hazır olduğu varsayılır.
 
 Not (Ubuntu 22.04): Varsayılan repo Podman sürümü eski olabilir. Script Quadlet için `Podman >= 4.6` bekler.
 
