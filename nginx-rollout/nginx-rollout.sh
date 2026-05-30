@@ -319,8 +319,7 @@ main() {
     git -C "$REPO_DIR" config core.sharedRepository 0660 || true
   else
     git -C "$REPO_DIR" config core.sharedRepository 0660 || true
-    git -C "$REPO_DIR" fetch --all --prune
-    git -C "$REPO_DIR" pull --ff-only
+    git -C "$REPO_DIR" pull --ff-only --prune --no-write-fetch-head
   fi
 
   normalize_repo_permissions "$REPO_DIR" "$REPO_PARENT" "$REPO_LOCK_FILE"

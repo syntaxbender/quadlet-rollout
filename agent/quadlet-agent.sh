@@ -72,12 +72,19 @@ if ! flock -w 60 9; then
   exit 1
 fi
 
+umask 0002
+
 if [[ ! -d "$REPO_DIR/.git" ]]; then
-  git clone "$REPO_URL" "$REPO_DIR"
-  git -C "$REPO_DIR" config core.sharedRepository group || true
+  git clone --config core.sharedRepository=0660 "$REPO_URL" "$REPO_DIR"
+  git -C "$REPO_DIR" config core.sharedRepository 0660 || true
+  find "$REPO_DIR" -type d -exec chmod g+rws {} + 2>/dev/null || true
+  find "$REPO_DIR" -type f -exec chmod g+rw {} + 2>/dev/null || true
 else
-  git -C "$REPO_DIR" fetch --all --prune
-  git -C "$REPO_DIR" pull --ff-only
+  # Ortak repo çok kullanıcı tarafından güncellendiği için grup yazma korunmalı.
+  git -C "$REPO_DIR" config core.sharedRepository 0660 || true
+  git -C "$REPO_DIR" pull --ff-only --prune --no-write-fetch-head
+  find "$REPO_DIR" -type d -exec chmod g+rws {} + 2>/dev/null || true
+  find "$REPO_DIR" -type f -exec chmod g+rw {} + 2>/dev/null || true
 fi
 
 SRC_USER_DIR="$REPO_DIR/quadlet-containers/$USER"
