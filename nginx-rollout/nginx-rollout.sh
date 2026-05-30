@@ -319,10 +319,12 @@ main() {
     git -C "$REPO_DIR" config core.sharedRepository 0660 || true
   else
     git -C "$REPO_DIR" config core.sharedRepository 0660 || true
-    git -C "$REPO_DIR" fetch --all --prune --no-write-fetch-head
     UPSTREAM_REF="$(git -C "$REPO_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-    [[ -n "$UPSTREAM_REF" ]] || die "missing upstream branch in repo: $REPO_DIR"
-    git -C "$REPO_DIR" merge --ff-only "$UPSTREAM_REF"
+    [[ -n "$UPSTREAM_REF" && "$UPSTREAM_REF" == */* ]] || die "missing upstream branch in repo: $REPO_DIR"
+    UPSTREAM_REMOTE="${UPSTREAM_REF%%/*}"
+    UPSTREAM_BRANCH="${UPSTREAM_REF#*/}"
+    git -C "$REPO_DIR" fetch --prune --no-write-fetch-head "$UPSTREAM_REMOTE" "$UPSTREAM_BRANCH"
+    git -C "$REPO_DIR" merge --ff-only "$UPSTREAM_REMOTE/$UPSTREAM_BRANCH"
   fi
 
   normalize_repo_permissions "$REPO_DIR" "$REPO_PARENT" "$REPO_LOCK_FILE"

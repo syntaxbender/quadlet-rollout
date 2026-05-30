@@ -82,13 +82,15 @@ if [[ ! -d "$REPO_DIR/.git" ]]; then
 else
   # Ortak repo çok kullanıcı tarafından güncellendiği için grup yazma korunmalı.
   git -C "$REPO_DIR" config core.sharedRepository 0660 || true
-  git -C "$REPO_DIR" fetch --all --prune --no-write-fetch-head
   UPSTREAM_REF="$(git -C "$REPO_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-  if [[ -z "$UPSTREAM_REF" ]]; then
+  if [[ -z "$UPSTREAM_REF" || "$UPSTREAM_REF" != */* ]]; then
     echo "missing upstream branch in repo: $REPO_DIR" >&2
     exit 1
   fi
-  git -C "$REPO_DIR" merge --ff-only "$UPSTREAM_REF"
+  UPSTREAM_REMOTE="${UPSTREAM_REF%%/*}"
+  UPSTREAM_BRANCH="${UPSTREAM_REF#*/}"
+  git -C "$REPO_DIR" fetch --prune --no-write-fetch-head "$UPSTREAM_REMOTE" "$UPSTREAM_BRANCH"
+  git -C "$REPO_DIR" merge --ff-only "$UPSTREAM_REMOTE/$UPSTREAM_BRANCH"
   find "$REPO_DIR" -type d -exec chmod g+rws {} + 2>/dev/null || true
   find "$REPO_DIR" -type f -exec chmod g+rw {} + 2>/dev/null || true
 fi
