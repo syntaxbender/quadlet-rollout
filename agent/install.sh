@@ -193,6 +193,17 @@ validate_inputs() {
   fi
 }
 
+prepare_global_version_file() {
+  local project_parent
+
+  project_parent="$(dirname "$PROJECT_DIR")"
+  install -d -m 0755 "$project_parent"
+  install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$PROJECT_DIR"
+  install -m 0644 -o "$APP_USER" -g "$APP_USER" /dev/null "$VERSION_FILE"
+
+  log "Global version dosyası hazırlandı: $VERSION_FILE"
+}
+
 install_agent_for_user() {
   local user="$1"
   local uid home config_path linger_state enabled_state active_state
@@ -294,6 +305,7 @@ main() {
   collect_inputs
   normalize_target_users
   validate_inputs
+  prepare_global_version_file
   log "Ortak repo dizini hazırlanıyor: $AGENT_REPO_DIR"
   prepare_shared_repo_dir "$AGENT_REPO_DIR"
 
