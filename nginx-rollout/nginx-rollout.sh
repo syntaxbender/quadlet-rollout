@@ -54,6 +54,28 @@ safe_rm_dir_contents() {
   done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0)
 }
 
+normalize_repo_permissions() {
+  local repo_dir="$1"
+  local repo_parent="$2"
+  local lock_file="$3"
+  local repo_group
+
+  repo_group="$(stat -c '%G' "$repo_parent" 2>/dev/null || true)"
+  [[ -n "$repo_group" ]] || repo_group="root"
+
+  install -d -m 2775 -o root -g "$repo_group" "$repo_parent"
+  install -d -m 2775 -o root -g "$repo_group" "$repo_dir"
+  if [[ ! -e "$lock_file" ]]; then
+    install -m 0664 -o root -g "$repo_group" /dev/null "$lock_file"
+  fi
+
+  chgrp -R "$repo_group" "$repo_dir" 2>/dev/null || true
+  find "$repo_dir" -type d -exec chmod g+rws {} + 2>/dev/null || true
+  find "$repo_dir" -type f -exec chmod g+rw {} + 2>/dev/null || true
+  chgrp "$repo_group" "$lock_file" 2>/dev/null || true
+  chmod 0664 "$lock_file" 2>/dev/null || true
+}
+
 ensure_no_symlink_tree() {
   local src="$1"
   if find "$src" -type l -print -quit | grep -q .; then
@@ -282,18 +304,26 @@ main() {
   fi
 
   [[ -d "$REPO_PARENT" ]] || die "repo parent directory missing: $REPO_PARENT"
-  exec 9>"$REPO_LOCK_FILE"
+  normalize_repo_permissions "$REPO_DIR" "$REPO_PARENT" "$REPO_LOCK_FILE"
+
+  exec 9>>"$REPO_LOCK_FILE"
   if ! flock -w 120 9; then
     die "failed to acquire repo lock: $REPO_LOCK_FILE"
   fi
 
+  # Root ve user-agent aynı repo üzerinde çalıştığı için grup yazma bitini koru.
+  umask 0002
+
   if [[ ! -d "$REPO_DIR/.git" ]]; then
     git clone "$REPO_URL" "$REPO_DIR"
-    git -C "$REPO_DIR" config core.sharedRepository group || true
+    git -C "$REPO_DIR" config core.sharedRepository 0660 || true
   else
+    git -C "$REPO_DIR" config core.sharedRepository 0660 || true
     git -C "$REPO_DIR" fetch --all --prune
     git -C "$REPO_DIR" pull --ff-only
   fi
+
+  normalize_repo_permissions "$REPO_DIR" "$REPO_PARENT" "$REPO_LOCK_FILE"
 
   ensure_within "$REPO_DIR" "$REPO_DIR/$CERT_BUNDLES_DIR"
 

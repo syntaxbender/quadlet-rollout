@@ -58,10 +58,10 @@ else
 fi
 
 # Prefer write-open; if permissions are tighter than expected, fallback to read-open.
-if exec 9>>"$LOCK_FILE"; then
-  :
-elif exec 9<"$LOCK_FILE"; then
-  :
+if [[ -w "$LOCK_FILE" ]]; then
+  exec 9>>"$LOCK_FILE"
+elif [[ -r "$LOCK_FILE" ]]; then
+  exec 9<"$LOCK_FILE"
 else
   echo "cannot open lock file: $LOCK_FILE (check permissions or rerun installer)" >&2
   exit 1
