@@ -32,6 +32,11 @@ Script interaktif olarak `PROJECT_DIR` ve `AGENT_REPO_URL` sorar.
 Kullanıcı listesi `TARGET_USERS_RAW` (virgül/boşluk ayracı) veya `TARGET_USER` ile verilebilir.  
 Hiçbiri verilmezse kullanıcı listesi interaktif sorulur.
 
+Installer her çalışmada permission self-heal yapar:
+- `<project_dir>/global_version` okunabilir moda döner (`0644`)
+- ortak repo lock dosyası (`.quadlet-nginx-shared-repo.lock`) ve repo dizini grup yazılabilir hale getirilir
+- kullanıcı home altındaki `.config/.local` ownership'i kullanıcıya geri alınır
+
 ## Sık kullanılan env override'ları
 
 ```bash

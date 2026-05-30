@@ -19,6 +19,10 @@ sudo ./nginx-rollout/install.sh
 Script interaktif olarak `PROJECT_DIR` ve `NGINX_ROLLOUT_REPO_URL` sorar.  
 Diğer path/env değerleri varsayılan/hardcoded akışla türetilir ve `nginx-rollout.timer` varsayılan olarak aktif edilir.
 
+Installer her çalışmada permission self-heal yapar:
+- `<project_dir>` ve `<project_dir>/global_version` izinlerini normalize eder (`quadlet-rollout:quadlet-rollout`, `0755/0644`)
+- ortak repo lock dosyasını (`.quadlet-nginx-shared-repo.lock`) ve repo dizinini grup yazılabilir hale getirir
+
 ## Sık kullanılan env override'ları
 
 ```bash

@@ -149,8 +149,16 @@ collect_inputs() {
 }
 
 collect_missing_inputs() {
+  local existing_salt=""
+  if [[ -f "$WEBHOOK_UNIT_PATH" ]]; then
+    existing_salt="$(sed -n 's/^Environment=SALT_SECRET=//p' "$WEBHOOK_UNIT_PATH" | head -n1 || true)"
+  fi
+
   if [[ -n "$SALT_SECRET" ]]; then
-    warn "SALT_SECRET manuel verilmiş; otomatik üretim yerine bu değer kullanılacak."
+    warn "SALT_SECRET manuel verilmiş; bu değer kullanılacak."
+  elif [[ -n "$existing_salt" ]]; then
+    SALT_SECRET="$existing_salt"
+    log "Mevcut SALT_SECRET değeri korunuyor (unit dosyasından alındı)."
   else
     SALT_SECRET="$(openssl rand -hex 32)"
     log "SALT_SECRET otomatik üretildi: $SALT_SECRET"
@@ -265,9 +273,15 @@ ensure_service_user() {
 
 prepare_version_file() {
   install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$VERSION_DIR"
-  touch "$VERSION_FILE"
-  chown "$APP_USER:$APP_USER" "$VERSION_FILE"
-  chmod 0644 "$VERSION_FILE"
+  chown "$APP_USER:$APP_USER" "$VERSION_DIR"
+  chmod 0755 "$VERSION_DIR"
+
+  if [[ ! -f "$VERSION_FILE" ]]; then
+    install -m 0644 -o "$APP_USER" -g "$APP_USER" /dev/null "$VERSION_FILE"
+  else
+    chown "$APP_USER:$APP_USER" "$VERSION_FILE"
+    chmod 0644 "$VERSION_FILE"
+  fi
 }
 
 build_or_use_image() {

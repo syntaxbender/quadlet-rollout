@@ -39,7 +39,17 @@ fi
 
 REPO_PARENT="$(dirname "$REPO_DIR")"
 LOCK_FILE="${REPO_LOCK_FILE:-$REPO_PARENT/.quadlet-nginx-shared-repo.lock}"
-mkdir -p "$REPO_PARENT"
+if [[ ! -d "$REPO_PARENT" ]]; then
+  echo "repo parent directory missing: $REPO_PARENT" >&2
+  exit 1
+fi
+
+if [[ ! -e "$LOCK_FILE" ]]; then
+  if ! touch "$LOCK_FILE" 2>/dev/null; then
+    echo "lock file missing and cannot be created: $LOCK_FILE (rerun installer)" >&2
+    exit 1
+  fi
+fi
 
 if git config --global --get-all safe.directory 2>/dev/null | grep -Fxq "$REPO_DIR"; then
   :
@@ -47,7 +57,16 @@ else
   git config --global --add safe.directory "$REPO_DIR" 2>/dev/null || true
 fi
 
-exec 9>"$LOCK_FILE"
+# Prefer write-open; if permissions are tighter than expected, fallback to read-open.
+if exec 9>>"$LOCK_FILE"; then
+  :
+elif exec 9<"$LOCK_FILE"; then
+  :
+else
+  echo "cannot open lock file: $LOCK_FILE (check permissions or rerun installer)" >&2
+  exit 1
+fi
+
 if ! flock -w 60 9; then
   echo "failed to acquire repo lock: $LOCK_FILE" >&2
   exit 1

@@ -86,6 +86,7 @@ def atomic_write(path: str, content: str) -> None:
         # Global version dosyası user-agent'lar tarafından okunabilmeli.
         os.chmod(tmp_path, 0o644)
         os.replace(tmp_path, path)
+        os.chmod(path, 0o644)
     finally:
         try:
             if os.path.exists(tmp_path):

@@ -161,10 +161,18 @@ prepare_shared_repo_dir() {
   install -d -m 2775 -o root -g "$APP_USER" "$repo_parent"
   install -d -m 2775 -o root -g "$APP_USER" "$repo_dir"
   install -m 0664 -o root -g "$APP_USER" /dev/null "$lock_file"
+  chown root:"$APP_USER" "$repo_parent" "$repo_dir" "$lock_file"
+  chmod 2775 "$repo_parent" "$repo_dir"
+  chmod 0664 "$lock_file"
 
   chgrp -R "$APP_USER" "$repo_dir"
   find "$repo_dir" -type d -exec chmod g+rws {} +
   find "$repo_dir" -type f -exec chmod g+rw {} +
+
+  if command -v setfacl >/dev/null 2>&1; then
+    setfacl -m "g:$APP_USER:rwx" "$repo_parent" "$repo_dir" 2>/dev/null || true
+    setfacl -d -m "g:$APP_USER:rwx" "$repo_parent" "$repo_dir" 2>/dev/null || true
+  fi
 
   if [[ -d "$repo_dir/.git" ]]; then
     git -C "$repo_dir" config core.sharedRepository group || true
@@ -199,6 +207,8 @@ prepare_global_version_file() {
   project_parent="$(dirname "$PROJECT_DIR")"
   install -d -m 0755 "$project_parent"
   install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$PROJECT_DIR"
+  chown "$APP_USER:$APP_USER" "$PROJECT_DIR"
+  chmod 0755 "$PROJECT_DIR"
   if [[ ! -f "$VERSION_FILE" ]]; then
     install -m 0644 -o "$APP_USER" -g "$APP_USER" /dev/null "$VERSION_FILE"
   else

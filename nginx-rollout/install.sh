@@ -109,10 +109,18 @@ prepare_shared_repo_dir() {
   install -d -m 2775 -o root -g "$APP_USER" "$repo_parent"
   install -d -m 2775 -o root -g "$APP_USER" "$repo_dir"
   install -m 0664 -o root -g "$APP_USER" /dev/null "$lock_file"
+  chown root:"$APP_USER" "$repo_parent" "$repo_dir" "$lock_file"
+  chmod 2775 "$repo_parent" "$repo_dir"
+  chmod 0664 "$lock_file"
 
   chgrp -R "$APP_USER" "$repo_dir"
   find "$repo_dir" -type d -exec chmod g+rws {} +
   find "$repo_dir" -type f -exec chmod g+rw {} +
+
+  if command -v setfacl >/dev/null 2>&1; then
+    setfacl -m "g:$APP_USER:rwx" "$repo_parent" "$repo_dir" 2>/dev/null || true
+    setfacl -d -m "g:$APP_USER:rwx" "$repo_parent" "$repo_dir" 2>/dev/null || true
+  fi
 
   if [[ -d "$repo_dir/.git" ]]; then
     git -C "$repo_dir" config core.sharedRepository group || true
@@ -137,6 +145,19 @@ validate_inputs() {
   validate_repo_relative_path "$NGINX_ROLLOUT_CERT_BUNDLES_DIR"
 
   getent group "$APP_USER" >/dev/null 2>&1 || die "Grup bulunamadı: $APP_USER"
+}
+
+prepare_project_state() {
+  install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$PROJECT_DIR"
+  chown "$APP_USER:$APP_USER" "$PROJECT_DIR"
+  chmod 0755 "$PROJECT_DIR"
+
+  if [[ ! -f "$VERSION_FILE" ]]; then
+    install -m 0644 -o "$APP_USER" -g "$APP_USER" /dev/null "$VERSION_FILE"
+  else
+    chown "$APP_USER:$APP_USER" "$VERSION_FILE"
+    chmod 0644 "$VERSION_FILE"
+  fi
 }
 
 install_nginx_rollout_agent() {
@@ -184,6 +205,11 @@ systemctl reload nginx
 EOF_INNER
   chmod 0755 "$CERTBOT_DEPLOY_HOOK_PATH"
 
+  # PROJECT_DIR altında webhook'un yazdığı global_version erişimi korunmalı.
+  chown "$APP_USER:$APP_USER" "$PROJECT_DIR" "$VERSION_FILE"
+  chmod 0755 "$PROJECT_DIR"
+  chmod 0644 "$VERSION_FILE"
+
   systemctl daemon-reload
   if [[ "$NGINX_ROLLOUT_ENABLE_TIMER" == "y" ]]; then
     systemctl enable --now nginx-rollout.timer
@@ -198,6 +224,7 @@ main() {
   require_files
   collect_inputs
   validate_inputs
+  prepare_project_state
   install_nginx_rollout_agent
   log "Nginx rollout kurulumu tamamlandı. Config: $NGINX_ROLLOUT_ENV_PATH"
 }

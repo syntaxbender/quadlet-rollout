@@ -223,6 +223,9 @@ systemctl --user status quadlet-agent.timer
 
 ## Kurulum (özet)
 
+Normal akışta aşağıdaki permission adımlarını manuel çalıştırman gerekmez; `webhook-app/install.sh`, `agent/install.sh`, `nginx-rollout/install.sh` bu izinleri her çalışmada self-heal eder.  
+Aşağıdaki blok, yalnızca acil manuel müdahale referansı olarak bırakılmıştır.
+
 1. Root tarafta ortak version dosyası oluştur:
 
 ```bash

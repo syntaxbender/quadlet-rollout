@@ -23,7 +23,12 @@ Script interaktif olarak en az şu alanları sorar:
 - `TOKEN_TOLERANCE_MINUTES`
 - `CONFIGURE_NGINX` (+ seçime göre `NGINX_ACTIVATE_CONFIG`, `NGINX_ENABLE_SSL`)
 
-`SALT_SECRET` sorulmaz; her kurulumda `openssl` ile otomatik üretilir ve çıktı olarak basılır.
+`SALT_SECRET` sorulmaz:
+- Unit dosyasında mevcut bir secret varsa korunur.
+- İlk kurulumda yoksa `openssl` ile otomatik üretilir ve çıktı olarak basılır.
+- İstersen `SALT_SECRET=...` override ederek manuel sabitleyebilirsin.
+
+Installer her çalışmada `<project_dir>` ve `<project_dir>/global_version` izinlerini tekrar normalize eder (`quadlet-rollout:quadlet-rollout`, `0755/0644`).
 
 ## Sık kullanılan env override'ları
 
