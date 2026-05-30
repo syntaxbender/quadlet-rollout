@@ -8,7 +8,7 @@ Bu bileşen, bir veya birden fazla Linux kullanıcısı için `quadlet-agent` sc
 - `%h/.config/systemd/user/quadlet-agent.service`
 - `%h/.config/systemd/user/quadlet-agent.timer`
 - `%h/.config/quadlet-agent/config`
-- `%h/.config/quadlet-agent/app.env` (yoksa boş oluşturur)
+- `%h/.config/containers/systemd/<unit_adi>.env` veya `%h/.config/systemd/user/<unit_adi>.env` (rollout sırasında yoksa boş oluşturur)
 
 ## Çalışma davranışı
 
@@ -16,6 +16,10 @@ Bu bileşen, bir veya birden fazla Linux kullanıcısı için `quadlet-agent` sc
 - Agent restart hedeflerini kopyaladığı dosyalardan dinamik çıkarır:
   - `~/.config/containers/systemd/*.container -> <name>.service`
   - `~/.config/systemd/user/*.service|*.timer -> aynı unit adı`
+- Kopyalanan `container/service` için ilgili env dosyasını otomatik hazırlar:
+  - Unit dosyasının yanında: `<unit_adi>.env`
+  - Örnek: `appsvc.container -> ~/.config/containers/systemd/appsvc.env`
+  - Örnek: `myjob.service -> ~/.config/systemd/user/myjob.env`
 
 ## Çalıştırma
 

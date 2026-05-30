@@ -45,7 +45,10 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - `systemctl --user daemon-reload` sonrası restart hedefleri dinamik belirlenir:
   - `~/.config/containers/systemd/*.container -> <name>.service`
   - `~/.config/systemd/user/*.service|*.timer -> aynı unit adı`
-- `install.sh`, her agent kullanıcısı için boş `~/.config/quadlet-agent/app.env` dosyası oluşturur (manuel doldurulur)
+- Rollout sırasında kopyalanan her `container/service` unit için yoksa otomatik boş env dosyası oluşturulur:
+  - Unit dosyasının yanında: `<unit_adi>.env`
+  - Örnek: `appsvc.container -> ~/.config/containers/systemd/appsvc.env`
+  - Örnek: `myjob.service -> ~/.config/systemd/user/myjob.env`
 
 ## Nginx Rollout Özeti
 
@@ -96,7 +99,9 @@ Kaynak: [webhook.py](/home/syn/Desktop/webhook/webhook-app/webhook.py)
 ### Agent varsayılanları
 
 - Config yolu: `${XDG_CONFIG_HOME:-$HOME/.config}/quadlet-agent/config`
-- Env dosyası: `${XDG_CONFIG_HOME:-$HOME/.config}/quadlet-agent/app.env` (boş oluşturulur)
+- Env dosyası modeli: unit dosyasının yanında `${unit_adi}.env` (yoksa rollout sırasında boş oluşturulur)
+  - Container için: `${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd/<unit_adi>.env`
+  - User service için: `${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/<unit_adi>.env`
 - State yolu: `${XDG_STATE_HOME:-$HOME/.local/state}/quadlet-agent/seen_version`
 - Ortak repo URL: `https://github.com/syntaxbender/quadlet-services.git`
 - Ortak repo path: `<project_dir>/repos/quadlet-nginx-shared-repo` (default: `/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo`)

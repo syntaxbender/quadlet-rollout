@@ -10,7 +10,6 @@ VERSION_FILE="${VERSION_FILE:-$PROJECT_DIR/global_version}"
 AGENT_REPO_URL="${AGENT_REPO_URL:-https://github.com/syntaxbender/quadlet-services.git}"
 SHARED_REPO_NAME="${SHARED_REPO_NAME:-quadlet-nginx-shared-repo}"
 AGENT_REPO_DIR="${AGENT_REPO_DIR:-$PROJECT_DIR/repos/$SHARED_REPO_NAME}"
-AGENT_ENV_FILENAME="${AGENT_ENV_FILENAME:-app.env}"
 TARGET_USER="${TARGET_USER:-}"
 TARGET_USERS_RAW="${TARGET_USERS_RAW:-}"
 TARGET_USERS=()
@@ -167,7 +166,7 @@ validate_inputs() {
 
 install_agent_for_user() {
   local user="$1"
-  local uid home config_path env_file
+  local uid home config_path
 
   uid="$(id -u "$user")"
   home="$(getent passwd "$user" | cut -d: -f6)"
@@ -206,16 +205,6 @@ REPO_DIR="$AGENT_REPO_DIR"
 EOF_INNER
   chown "$user:$user" "$config_path"
   chmod 0644 "$config_path"
-
-  env_file="$home/.config/quadlet-agent/$AGENT_ENV_FILENAME"
-  if [[ ! -f "$env_file" ]]; then
-    : >"$env_file"
-    chown "$user:$user" "$env_file"
-    chmod 0600 "$env_file"
-    log "Boş env dosyası oluşturuldu: $env_file"
-  else
-    log "Mevcut env dosyası korunuyor: $env_file"
-  fi
 
   run_user_systemctl "$user" "$uid" daemon-reload
   run_user_systemctl "$user" "$uid" enable --now quadlet-agent.timer

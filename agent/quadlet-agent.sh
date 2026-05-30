@@ -89,6 +89,32 @@ add_restart_unit() {
   fi
 }
 
+ensure_env_file_near_unit() {
+  local unit_path="$1"
+  local env_file env_real
+
+  case "$unit_path" in
+    *.container) env_file="${unit_path%.container}.env" ;;
+    *.service) env_file="${unit_path%.service}.env" ;;
+    *) return 0 ;;
+  esac
+
+  env_real="$(realpath -m "$env_file")"
+  case "$env_real" in
+    "$HOME_REAL"/*) ;;
+    *)
+      echo "refusing env path escape: $unit_path -> $env_real" >&2
+      exit 1
+      ;;
+  esac
+
+  if [[ ! -e "$env_real" ]]; then
+    : > "$env_real"
+    chmod 0600 "$env_real"
+    echo "created empty env file: $env_real" >&2
+  fi
+}
+
 HOME_REAL="$(realpath -m "$DST_HOME")"
 
 while IFS= read -r -d '' src_path; do
@@ -120,10 +146,12 @@ while IFS= read -r -d '' src_path; do
         "$HOME_REAL/.config/containers/systemd/"*.container)
           unit_name="$(basename "${target_real%.container}").service"
           add_restart_unit "$unit_name"
+          ensure_env_file_near_unit "$target_real"
           ;;
         "$HOME_REAL/.config/systemd/user/"*.service|"$HOME_REAL/.config/systemd/user/"*.timer)
           unit_name="$(basename "$target_real")"
           add_restart_unit "$unit_name"
+          ensure_env_file_near_unit "$target_real"
           ;;
       esac
       ;;
