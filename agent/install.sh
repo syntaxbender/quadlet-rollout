@@ -107,6 +107,26 @@ run_user_systemctl() {
     systemctl --user "$@"
 }
 
+user_unit_enabled_state() {
+  local user="$1"
+  local uid="$2"
+  local unit="$3"
+  local state
+
+  state="$(run_user_systemctl "$user" "$uid" is-enabled "$unit" 2>/dev/null || true)"
+  printf '%s' "${state//$'\n'/}"
+}
+
+user_unit_active_state() {
+  local user="$1"
+  local uid="$2"
+  local unit="$3"
+  local state
+
+  state="$(run_user_systemctl "$user" "$uid" is-active "$unit" 2>/dev/null || true)"
+  printf '%s' "${state//$'\n'/}"
+}
+
 ensure_git_safe_directory() {
   local user="$1"
   local path="$2"
@@ -166,17 +186,21 @@ validate_inputs() {
 
 install_agent_for_user() {
   local user="$1"
-  local uid home config_path
+  local uid home config_path linger_state enabled_state active_state
 
   uid="$(id -u "$user")"
   home="$(getent passwd "$user" | cut -d: -f6)"
   [[ -n "$home" ]] || die "Home dizini okunamadı: $user"
 
-  log "Agent kuruluyor: $user"
+  log "Agent kuruluyor: $user (uid=$uid home=$home)"
   loginctl enable-linger "$user"
+  linger_state="$(loginctl show-user "$user" -p Linger --value 2>/dev/null || true)"
+  log "Linger durumu ($user): ${linger_state:-unknown}"
+
   if id -nG "$user" | tr ' ' '\n' | grep -Fxq "$APP_USER"; then
-    :
+    log "$user zaten '$APP_USER' grubunda"
   else
+    log "$user '$APP_USER' grubuna ekleniyor"
     usermod -a -G "$APP_USER" "$user"
     if systemctl is-active --quiet "user@$uid.service"; then
       warn "$user için user@$uid.service yeniden başlatılıyor (yeni grup üyeliği için)"
@@ -184,12 +208,15 @@ install_agent_for_user() {
     fi
   fi
 
+  log "Git safe.directory kontrolü: $AGENT_REPO_DIR ($user)"
   ensure_git_safe_directory "$user" "$AGENT_REPO_DIR"
 
+  log "Kullanıcı dizinleri hazırlanıyor: $home/.local/bin ve .config yolları"
   install -d -m 0755 -o "$user" -g "$user" "$home/.local/bin"
   install -d -m 0755 -o "$user" -g "$user" "$home/.config/quadlet-agent"
   install -d -m 0755 -o "$user" -g "$user" "$home/.config/systemd/user"
 
+  log "Agent script ve systemd user unit dosyaları kopyalanıyor"
   install -m 0755 -o "$user" -g "$user" \
     "$SCRIPT_DIR/quadlet-agent.sh" "$home/.local/bin/quadlet-agent.sh"
   install -m 0644 -o "$user" -g "$user" \
@@ -205,9 +232,31 @@ REPO_DIR="$AGENT_REPO_DIR"
 EOF_INNER
   chown "$user:$user" "$config_path"
   chmod 0644 "$config_path"
+  log "Config yazıldı: $config_path"
+  log "Not: env dosyaları rollout sırasında unit dosyasının yanında otomatik oluşturulur"
 
+  log "User systemd daemon-reload ve timer enable --now çalıştırılıyor"
   run_user_systemctl "$user" "$uid" daemon-reload
   run_user_systemctl "$user" "$uid" enable --now quadlet-agent.timer
+
+  enabled_state="$(user_unit_enabled_state "$user" "$uid" "quadlet-agent.timer")"
+  active_state="$(user_unit_active_state "$user" "$uid" "quadlet-agent.timer")"
+  log "Timer durumu ($user): enabled=$enabled_state active=$active_state"
+
+  case "$enabled_state" in
+    enabled|enabled-runtime)
+      ;;
+    *)
+      die "Timer enable doğrulanamadı ($user): $enabled_state"
+      ;;
+  esac
+  case "$active_state" in
+    active|activating)
+      ;;
+    *)
+      die "Timer active doğrulanamadı ($user): $active_state"
+      ;;
+  esac
 }
 
 main() {
@@ -218,6 +267,7 @@ main() {
   collect_inputs
   normalize_target_users
   validate_inputs
+  log "Ortak repo dizini hazırlanıyor: $AGENT_REPO_DIR"
   prepare_shared_repo_dir "$AGENT_REPO_DIR"
 
   for user in "${TARGET_USERS[@]}"; do
