@@ -58,9 +58,10 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - Certbot öncesi mevcut `sites-enabled` state'i geçici olarak kaldırılır ve `nginx/cert-bundles/*.env` dosyalarından ACME-only HTTP config üretilir
 - `nginx/cert-bundles/*.env` dosyalarına göre `certbot certonly --webroot --keep-until-expiring --expand` çalışır
 - Her bundle tek certificate lineage olarak yönetilir (`CERT_NAME`) ve çoklu domain (SAN) destekler
+- Rollout başarısız olursa `nginx_failed_version` içine o SHA yazılır; global version değişene kadar aynı SHA tekrar denenmez
 - Cert aşaması bitince geçici ACME config kaldırılır, önceki enabled site'lar geri yüklenir, sonra `nginx/http/` ve `nginx/https/` configleri aktive edilir
 - Son durumda tekrar `nginx -t && systemctl reload nginx` yapılır
-- `nginx_seen_version` state dosyası güncellenir
+- Başarılı olursa `nginx_seen_version` state dosyası güncellenir ve failed marker temizlenir
 - Certbot renew hook (`/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`) otomatik reload sağlar
 
 Örnek repo sözleşmesi:
@@ -131,6 +132,7 @@ Kaynak: [quadlet-agent.timer](/home/syn/Desktop/webhook/agent/systemd-user/quadl
   - `CERT_BUNDLES_DIR=nginx/cert-bundles`
 - ACME webroot: `/var/www/certbot`
 - State dosyası: `<project_dir>/nginx_seen_version` (default: `/opt/quadlet-rollout/nginx_seen_version`)
+- Failed version dosyası: `<project_dir>/nginx_failed_version` (default: `/opt/quadlet-rollout/nginx_failed_version`)
 - Certbot binary: `/usr/bin/certbot`
 - Renew hook: `/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`
 

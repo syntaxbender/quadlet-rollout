@@ -7,3 +7,4 @@ Wants=network-online.target
 Type=oneshot
 Environment=NGINX_ROLLOUT_CONFIG=__NGINX_ROLLOUT_ENV_PATH__
 ExecStart=/usr/local/bin/nginx-rollout.sh
+Restart=no

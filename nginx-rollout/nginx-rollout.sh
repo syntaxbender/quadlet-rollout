@@ -223,7 +223,24 @@ restore_nginx_after_acme() {
   fi
 }
 
-cleanup_acme_phase() {
+record_failed_version() {
+  local tmp_file
+
+  [[ -n "${FAILED_VERSION_FILE:-}" && -n "${CURRENT_VERSION:-}" ]] || return 0
+
+  install -d -m 0755 "$(dirname "$FAILED_VERSION_FILE")"
+  tmp_file="$FAILED_VERSION_FILE.tmp"
+  printf '%s\n' "$CURRENT_VERSION" > "$tmp_file"
+  mv -f -- "$tmp_file" "$FAILED_VERSION_FILE"
+  warn "rollout failed for version: $CURRENT_VERSION; skip retries until global_version changes"
+}
+
+clear_failed_version() {
+  [[ -n "${FAILED_VERSION_FILE:-}" ]] || return 0
+  rm -f -- "$FAILED_VERSION_FILE"
+}
+
+on_exit() {
   local rc=$?
 
   if [[ -n "${ACME_RESTORE_DIR:-}" ]]; then
@@ -232,7 +249,11 @@ cleanup_acme_phase() {
     ACME_RESTORE_DIR=""
   fi
 
-  return "$rc"
+  if [[ "$rc" -ne 0 && "${TRACK_FAILED_VERSION:-0}" == "1" ]]; then
+    record_failed_version || true
+  fi
+
+  exit "$rc"
 }
 
 parse_bundle_file() {
@@ -431,6 +452,8 @@ activate_phase() {
 }
 
 main() {
+  local -a BUNDLE_FILES
+
   [[ -f "$CONFIG_FILE" ]] || die "missing config: $CONFIG_FILE"
   # shellcheck disable=SC1090
   source "$CONFIG_FILE"
@@ -447,6 +470,7 @@ main() {
   require_var STATE_FILE
 
   CERTBOT_BIN="${CERTBOT_BIN:-certbot}"
+  FAILED_VERSION_FILE="${FAILED_VERSION_FILE:-$(dirname "$STATE_FILE")/nginx_failed_version}"
   REPO_PARENT="$(dirname "$REPO_DIR")"
   REPO_LOCK_FILE="${REPO_LOCK_FILE:-$REPO_PARENT/.quadlet-nginx-shared-repo.lock}"
 
@@ -463,6 +487,21 @@ main() {
     log "version unchanged ($NEW_VERSION), skip"
     exit 0
   fi
+
+  FAILED_VERSION=""
+  if [[ -f "$FAILED_VERSION_FILE" ]]; then
+    FAILED_VERSION="$(tr -d '[:space:]' < "$FAILED_VERSION_FILE")"
+  fi
+
+  if [[ "$NEW_VERSION" == "$FAILED_VERSION" ]]; then
+    warn "version already failed ($NEW_VERSION), skip until global_version changes"
+    exit 0
+  fi
+
+  CURRENT_VERSION="$NEW_VERSION"
+  TRACK_FAILED_VERSION=1
+  ACME_RESTORE_DIR=""
+  trap on_exit EXIT
 
   [[ -d "$REPO_PARENT" ]] || die "repo parent directory missing: $REPO_PARENT"
   normalize_repo_permissions "$REPO_DIR" "$REPO_PARENT" "$REPO_LOCK_FILE"
@@ -491,20 +530,23 @@ main() {
   normalize_repo_permissions "$REPO_DIR" "$REPO_PARENT" "$REPO_LOCK_FILE"
 
   ensure_within "$REPO_DIR" "$REPO_DIR/$CERT_BUNDLES_DIR"
+  BUNDLE_FILES=()
+  if [[ -d "$REPO_DIR/$CERT_BUNDLES_DIR" ]]; then
+    mapfile -d '' BUNDLE_FILES < <(find "$REPO_DIR/$CERT_BUNDLES_DIR" -type f -name '*.env' -print0 | sort -z)
+  fi
 
   # 1) ACME-only HTTP phase first:
   # Temporarily disable current enabled sites so http-01 validation is not
   # captured by an older redirect/proxy server block.
   ACME_RESTORE_DIR="$(mktemp -d /tmp/nginx-rollout-acme.XXXXXX)"
-  trap cleanup_acme_phase EXIT
   disable_enabled_sites_for_acme "$ACME_RESTORE_DIR"
   activate_acme_http_config
 
   # 2) Cert phase: grouped SAN bundle definitions.
-  if [[ -d "$REPO_DIR/$CERT_BUNDLES_DIR" ]]; then
-    while IFS= read -r -d '' bundle_file; do
+  if [[ "${#BUNDLE_FILES[@]}" -gt 0 ]]; then
+    for bundle_file in "${BUNDLE_FILES[@]}"; do
       request_or_renew_bundle_cert "$bundle_file"
-    done < <(find "$REPO_DIR/$CERT_BUNDLES_DIR" -type f -name '*.env' -print0 | sort -z)
+    done
   else
     warn "bundle directory missing: $REPO_DIR/$CERT_BUNDLES_DIR"
   fi
@@ -513,14 +555,16 @@ main() {
   restore_nginx_after_acme "$ACME_RESTORE_DIR"
   rm -rf -- "$ACME_RESTORE_DIR"
   ACME_RESTORE_DIR=""
-  trap - EXIT
 
   # 4) Normal HTTP/HTTPS phases after cert material is available.
   activate_phase "http"
   activate_phase "https"
 
   install -d -m 0755 "$(dirname "$STATE_FILE")"
+  clear_failed_version
   printf '%s\n' "$NEW_VERSION" > "$STATE_FILE"
+  TRACK_FAILED_VERSION=0
+  trap - EXIT
   log "nginx rollout completed for version: $NEW_VERSION"
 }
 
