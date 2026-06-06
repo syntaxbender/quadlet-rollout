@@ -55,10 +55,10 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - Root timer (`nginx-rollout.timer`) `/opt/quadlet-rollout/global_version` değişimini izler
 - Değişim varsa rollout repo `git pull` ile güncellenir
 - Git lock dosyası ile (`.quadlet-nginx-shared-repo.lock`) agent/nginx eşzamanlı pull çakışmaları engellenir
-- Repo `nginx/http/` configleri önce aktive edilir (`nginx -t && reload`)
+- Certbot öncesi mevcut `sites-enabled` state'i geçici olarak kaldırılır ve `nginx/cert-bundles/*.env` dosyalarından ACME-only HTTP config üretilir
 - `nginx/cert-bundles/*.env` dosyalarına göre `certbot certonly --webroot --keep-until-expiring --expand` çalışır
 - Her bundle tek certificate lineage olarak yönetilir (`CERT_NAME`) ve çoklu domain (SAN) destekler
-- Cert aşaması başarılıysa `nginx/https/` configleri aktive edilir
+- Cert aşaması bitince geçici ACME config kaldırılır, önceki enabled site'lar geri yüklenir, sonra `nginx/http/` ve `nginx/https/` configleri aktive edilir
 - Son durumda tekrar `nginx -t && systemctl reload nginx` yapılır
 - `nginx_seen_version` state dosyası güncellenir
 - Certbot renew hook (`/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`) otomatik reload sağlar

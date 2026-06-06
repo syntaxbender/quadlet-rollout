@@ -23,6 +23,8 @@ Installer her çalışmada permission self-heal yapar:
 - `<project_dir>` ve `<project_dir>/global_version` izinlerini normalize eder (`quadlet-rollout:quadlet-rollout`, `0755/0644`)
 - ortak repo lock dosyasını (`.quadlet-nginx-shared-repo.lock`) ve repo dizinini grup yazılabilir hale getirir
 
+Rollout akışı certbot için mevcut enabled site'ları geçici olarak devreden çıkarır ve sadece ACME HTTP config'i aktive eder. Böylece eski bir server block veya repo `nginx/http/` redirect kuralı `/.well-known/acme-challenge/` isteklerini yakalayamaz. Cert aşaması bitince ACME config kapatılır, önceki enabled site'lar geri yüklenir, ardından repo `nginx/http/` ve `nginx/https/` configleri aktive edilir.
+
 ## Sık kullanılan env override'ları
 
 ```bash
