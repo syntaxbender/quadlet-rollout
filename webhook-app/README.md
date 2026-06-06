@@ -7,6 +7,7 @@ Bu bileşen, deploy webhook container'ını ve (istersen) webhook domain için N
 - `/etc/containers/systemd/quadlet-webhook.container`
 - `quadlet-webhook.service` (start/restart)
 - `/opt/quadlet-rollout/global_version` (owner: `quadlet-rollout`)
+- `/opt/quadlet-rollout/status/...` rollout durum dosyaları için okunabilir ortak alan
 - Opsiyonel Nginx site config (`/etc/nginx/sites-available/<domain>`)
 - Koşullu Certbot SSL üretimi (aşağıdaki koşullar sağlanırsa)
 
@@ -29,6 +30,20 @@ Script interaktif olarak en az şu alanları sorar:
 - İstersen `SALT_SECRET=...` override ederek manuel sabitleyebilirsin.
 
 Installer her çalışmada `<project_dir>` ve `<project_dir>/global_version` izinlerini tekrar normalize eder (`quadlet-rollout:quadlet-rollout`, `0755/0644`).
+
+## Durum Kontrolü
+
+Webhook `GET /check` endpoint'i global version, nginx rollout son başarılı hash'i ve user agent son başarılı hash'lerini JSON döner:
+
+```bash
+curl https://webhook.example.com/check
+```
+
+`CHECK_TOKEN` env verilirse endpoint `X-Check-Token` header'ı ister:
+
+```bash
+curl -H "X-Check-Token: $CHECK_TOKEN" https://webhook.example.com/check
+```
 
 ## Sık kullanılan env override'ları
 

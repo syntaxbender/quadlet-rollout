@@ -15,6 +15,19 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/quadlet-agent"
 SEEN_FILE="$STATE_DIR/seen_version"
 mkdir -p "$STATE_DIR"
 
+write_version_file() {
+  local path="$1"
+  local version="$2"
+  local dir tmp
+
+  dir="$(dirname "$path")"
+  mkdir -p "$dir"
+  tmp="$dir/.${path##*/}.$$"
+  printf '%s\n' "$version" > "$tmp"
+  chmod 0644 "$tmp"
+  mv -f -- "$tmp" "$path"
+}
+
 require_var() {
   local k="$1"
   [[ -n "${!k:-}" ]] || { echo "missing config var: $k" >&2; exit 1; }
@@ -34,6 +47,17 @@ if [[ -f "$SEEN_FILE" ]]; then
 fi
 
 if [[ "$NEW_VERSION" == "$OLD_VERSION" ]]; then
+  if [[ -n "${STATUS_FILE:-}" ]]; then
+    STATUS_VERSION=""
+    if [[ -f "$STATUS_FILE" ]]; then
+      STATUS_VERSION="$(tr -d '[:space:]' < "$STATUS_FILE")"
+    fi
+    if [[ "$STATUS_VERSION" != "$NEW_VERSION" ]]; then
+      if ! write_version_file "$STATUS_FILE" "$NEW_VERSION"; then
+        echo "warning: shared status file could not be written: $STATUS_FILE" >&2
+      fi
+    fi
+  fi
   exit 0
 fi
 
@@ -203,4 +227,10 @@ for unit_name in "${restart_units[@]}"; do
   systemctl --user restart "$unit_name"
 done
 
-printf '%s\n' "$NEW_VERSION" > "$SEEN_FILE"
+write_version_file "$SEEN_FILE" "$NEW_VERSION"
+
+if [[ -n "${STATUS_FILE:-}" ]]; then
+  if ! write_version_file "$STATUS_FILE" "$NEW_VERSION"; then
+    echo "warning: shared status file could not be written: $STATUS_FILE" >&2
+  fi
+fi

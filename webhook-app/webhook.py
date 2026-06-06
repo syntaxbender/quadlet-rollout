@@ -11,6 +11,14 @@ from urllib.parse import urlparse
 
 SALT_SECRET = os.environ.get("SALT_SECRET", "")
 VERSION_FILE = os.environ.get("VERSION_FILE", "/opt/quadlet-rollout/global_version")
+STATUS_DIR = os.environ.get("STATUS_DIR", "/opt/quadlet-rollout/status")
+NGINX_STATUS_FILE = os.environ.get("NGINX_STATUS_FILE", os.path.join(STATUS_DIR, "nginx", "seen_version"))
+NGINX_LEGACY_STATUS_FILE = os.environ.get(
+    "NGINX_LEGACY_STATUS_FILE",
+    os.path.join(os.path.dirname(VERSION_FILE), "nginx_seen_version"),
+)
+NGINX_FAILED_VERSION_FILE = os.environ.get("NGINX_FAILED_VERSION_FILE", "/opt/quadlet-rollout/nginx_failed_version")
+CHECK_TOKEN = os.environ.get("CHECK_TOKEN", "")
 BIND = os.environ.get("BIND", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8080"))
 # TOKEN_TOLERANCE_MINUTES: now etrafında kabul edilen +/- dakika aralığı.
@@ -23,6 +31,7 @@ if TOKEN_TOLERANCE_MINUTES < 0:
 SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 TOKEN_RE = re.compile(r"^[0-9a-f]{64}$")
 TIME_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def normalize_time_utc(raw: str) -> str:
@@ -95,6 +104,62 @@ def atomic_write(path: str, content: str) -> None:
             pass
 
 
+def file_mtime_utc(path: str) -> str:
+    try:
+        ts = os.path.getmtime(path)
+    except OSError:
+        return ""
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def read_hash_file(path: str) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.readline(256)
+    except FileNotFoundError:
+        return {"hash": None, "updated_at": None}
+    except OSError:
+        return {"hash": None, "updated_at": None}
+
+    value = normalize_sha(raw)
+    if not value:
+        return {"hash": None, "updated_at": file_mtime_utc(path), "error": "invalid_state"}
+
+    return {"hash": value, "updated_at": file_mtime_utc(path)}
+
+
+def read_first_hash_file(paths) -> dict:
+    for path in paths:
+        state = read_hash_file(path)
+        if state.get("hash"):
+            return state
+    return {"hash": None, "updated_at": None}
+
+
+def collect_agent_statuses() -> dict:
+    agents_dir = os.path.join(STATUS_DIR, "agents")
+    agents = {}
+
+    try:
+        names = sorted(os.listdir(agents_dir))
+    except FileNotFoundError:
+        return agents
+    except OSError:
+        return agents
+
+    for name in names:
+        if not SAFE_NAME_RE.fullmatch(name):
+            continue
+
+        user_dir = os.path.join(agents_dir, name)
+        if not os.path.isdir(user_dir):
+            continue
+
+        agents[name] = read_hash_file(os.path.join(user_dir, "seen_version"))
+
+    return agents
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "quadlet-webhook/0.1"
 
@@ -117,6 +182,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/healthz":
             self._send(200, {"ok": True})
+            return
+        if parsed.path == "/check":
+            self.handle_check(parsed)
             return
         if parsed.path == "/deploy":
             self._send(405, {"ok": False, "error": "method_not_allowed"})
@@ -189,6 +257,28 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._send(200, {"ok": True, "sha": sha})
+
+    def handle_check(self, parsed):
+        if parsed.query:
+            self._send(400, {"ok": False, "error": "query_not_allowed"})
+            return
+
+        if CHECK_TOKEN:
+            supplied = self.headers.get("X-Check-Token", "")
+            if len(supplied) > MAX_HEADER_VALUE_LEN or not hmac.compare_digest(supplied, CHECK_TOKEN):
+                self._send(401, {"ok": False, "error": "invalid_check_token"})
+                return
+
+        payload = {
+            "ok": True,
+            "global_version": read_hash_file(VERSION_FILE),
+            "nginx_rollout": {
+                "last_success": read_first_hash_file([NGINX_STATUS_FILE, NGINX_LEGACY_STATUS_FILE]),
+                "failed_version": read_hash_file(NGINX_FAILED_VERSION_FILE),
+            },
+            "quadlet_agents": collect_agent_statuses(),
+        }
+        self._send(200, payload)
 
 
 def main():

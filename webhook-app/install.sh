@@ -36,6 +36,7 @@ CERTBOT_BIN="${CERTBOT_BIN:-/usr/bin/certbot}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-}"
 SALT_SECRET="${SALT_SECRET:-}"
+CHECK_TOKEN="${CHECK_TOKEN:-}"
 
 log() {
   printf '[INFO] %s\n' "$*"
@@ -188,6 +189,7 @@ validate_inputs() {
   [[ "$WEBHOOK_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "WEBHOOK_DOMAIN geçersiz formatta"
   [[ "$PROJECT_DIR" == /* ]] || die "PROJECT_DIR absolute path olmalı"
   [[ "$SALT_SECRET" =~ ^[A-Za-z0-9._-]+$ ]] || die "SALT_SECRET yalnızca [A-Za-z0-9._-] içermeli"
+  [[ -z "$CHECK_TOKEN" || "$CHECK_TOKEN" =~ ^[A-Za-z0-9._-]+$ ]] || die "CHECK_TOKEN yalnızca [A-Za-z0-9._-] içermeli"
 
   if [[ "$CONFIGURE_NGINX" == "y" && "$NGINX_ENABLE_SSL" == "y" && "$NGINX_ACTIVATE_CONFIG" == "y" ]]; then
     [[ "$ACME_CHALLENGE_ROOT" == /* ]] || die "ACME_CHALLENGE_ROOT absolute path olmalı"
@@ -282,6 +284,9 @@ prepare_version_file() {
     chown "$APP_USER:$APP_USER" "$VERSION_FILE"
     chmod 0644 "$VERSION_FILE"
   fi
+
+  install -d -m 0755 -o "$APP_USER" -g "$APP_USER" \
+    "$VERSION_DIR/status" "$VERSION_DIR/status/agents" "$VERSION_DIR/status/nginx"
 }
 
 build_or_use_image() {
@@ -298,6 +303,7 @@ write_webhook_quadlet() {
     "WEBHOOK_IMAGE=$WEBHOOK_IMAGE" \
     "WEBHOOK_LOCAL_PORT=$WEBHOOK_LOCAL_PORT" \
     "SALT_SECRET=$SALT_SECRET" \
+    "CHECK_TOKEN=$CHECK_TOKEN" \
     "TOKEN_TOLERANCE_MINUTES=$TOKEN_TOLERANCE_MINUTES" \
     "VERSION_DIR=$VERSION_DIR"
 

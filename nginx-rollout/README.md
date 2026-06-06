@@ -8,6 +8,7 @@ Bu bileşen, root seviyesinde Nginx + Certbot rollout agent'ını kurar/güncell
 - `/etc/systemd/system/nginx-rollout.service`
 - `/etc/systemd/system/nginx-rollout.timer`
 - `<project_dir>/nginx-rollout.env` (default: `/opt/quadlet-rollout/nginx-rollout.env`)
+- `<project_dir>/status/nginx/seen_version`
 - `/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`
 
 ## Çalıştırma
@@ -25,7 +26,7 @@ Installer her çalışmada permission self-heal yapar:
 
 Rollout akışı certbot için mevcut enabled site'ları geçici olarak devreden çıkarır ve sadece ACME HTTP config'i aktive eder. Böylece eski bir server block veya repo `nginx/http/` redirect kuralı `/.well-known/acme-challenge/` isteklerini yakalayamaz. Cert aşaması bitince ACME config kapatılır, önceki enabled site'lar geri yüklenir, ardından repo `nginx/http/` ve `nginx/https/` configleri aktive edilir.
 
-Rollout başarısız olursa `<project_dir>/nginx_failed_version` içine o anki global version SHA yazılır. Timer tekrar çalışsa bile global version aynı kaldığı sürece certbot/nginx rollout yeniden denenmez; yeni webhook SHA gelince tekrar denenir. Başarılı rollout sonrası failed marker temizlenir ve `<project_dir>/nginx_seen_version` güncellenir.
+Rollout başarısız olursa `<project_dir>/nginx_failed_version` içine o anki global version SHA yazılır. Timer tekrar çalışsa bile global version aynı kaldığı sürece certbot/nginx rollout yeniden denenmez; yeni webhook SHA gelince tekrar denenir. Başarılı rollout sonrası failed marker temizlenir, `<project_dir>/nginx_seen_version` ve `/check` için `<project_dir>/status/nginx/seen_version` güncellenir.
 
 ## Sık kullanılan env override'ları
 

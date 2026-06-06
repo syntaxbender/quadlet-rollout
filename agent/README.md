@@ -8,6 +8,7 @@ Bu bileşen, bir veya birden fazla Linux kullanıcısı için `quadlet-agent` sc
 - `%h/.config/systemd/user/quadlet-agent.service`
 - `%h/.config/systemd/user/quadlet-agent.timer`
 - `%h/.config/quadlet-agent/config`
+- `<project_dir>/status/agents/<user>/seen_version`
 - `%h/.config/containers/systemd/<unit_adi>.env` veya `%h/.config/systemd/user/<unit_adi>.env` (rollout sırasında yoksa boş oluşturur)
 
 ## Çalışma davranışı
@@ -20,6 +21,7 @@ Bu bileşen, bir veya birden fazla Linux kullanıcısı için `quadlet-agent` sc
   - Unit dosyasının yanında: `<unit_adi>.env`
   - Örnek: `appsvc.container -> ~/.config/containers/systemd/appsvc.env`
   - Örnek: `myjob.service -> ~/.config/systemd/user/myjob.env`
+- Başarılı rollout sonrası local state (`~/.local/state/quadlet-agent/seen_version`) ve webhook `/check` için ortak state (`<project_dir>/status/agents/<user>/seen_version`) güncellenir.
 
 ## Çalıştırma
 

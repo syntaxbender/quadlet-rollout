@@ -2,6 +2,7 @@
 GLOBAL_VERSION_FILE="/opt/quadlet-rollout/global_version"
 REPO_URL="https://github.com/syntaxbender/quadlet-services.git"
 REPO_DIR="/opt/quadlet-rollout/repos/quadlet-nginx-shared-repo"
+STATUS_FILE="/opt/quadlet-rollout/status/agents/$USER/seen_version"
 # Repo içinde kullanıcı yolu sabit kural:
 # $REPO_DIR/quadlet-containers/$USER/
 # Bu dizinin içeriği birebir $HOME altına overwrite edilir (silme yok).

@@ -61,8 +61,38 @@ Bu depo, Ubuntu 22.04/24.04 + Podman Quadlet için SSH'siz deploy mimarisi örne
 - Rollout başarısız olursa `nginx_failed_version` içine o SHA yazılır; global version değişene kadar aynı SHA tekrar denenmez
 - Cert aşaması bitince geçici ACME config kaldırılır, önceki enabled site'lar geri yüklenir, sonra `nginx/http/` ve `nginx/https/` configleri aktive edilir
 - Son durumda tekrar `nginx -t && systemctl reload nginx` yapılır
-- Başarılı olursa `nginx_seen_version` state dosyası güncellenir ve failed marker temizlenir
+- Başarılı olursa `nginx_seen_version` ve `status/nginx/seen_version` state dosyaları güncellenir, failed marker temizlenir
 - Certbot renew hook (`/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`) otomatik reload sağlar
+
+## Rollout Durum Kontrolü
+
+Webhook domaininde `GET /check` son başarılı rollout hashlerini JSON olarak döner:
+
+```bash
+curl https://deploy.example.com/check
+```
+
+Örnek çıktı:
+
+```json
+{
+  "ok": true,
+  "global_version": {"hash": "450b105366dd24ada10b95fc4998861f8f467c61", "updated_at": "2026-06-07T10:00:00Z"},
+  "nginx_rollout": {
+    "last_success": {"hash": "450b105366dd24ada10b95fc4998861f8f467c61", "updated_at": "2026-06-07T10:01:00Z"},
+    "failed_version": {"hash": null, "updated_at": null}
+  },
+  "quadlet_agents": {
+    "appuser1": {"hash": "450b105366dd24ada10b95fc4998861f8f467c61", "updated_at": "2026-06-07T10:02:00Z"}
+  }
+}
+```
+
+Eğer webhook `CHECK_TOKEN` ile kurulursa `/check` için header gerekir:
+
+```bash
+curl -H "X-Check-Token: $CHECK_TOKEN" https://deploy.example.com/check
+```
 
 Örnek repo sözleşmesi:
 
@@ -133,6 +163,9 @@ Kaynak: [quadlet-agent.timer](/home/syn/Desktop/webhook/agent/systemd-user/quadl
 - ACME webroot: `/var/www/certbot`
 - State dosyası: `<project_dir>/nginx_seen_version` (default: `/opt/quadlet-rollout/nginx_seen_version`)
 - Failed version dosyası: `<project_dir>/nginx_failed_version` (default: `/opt/quadlet-rollout/nginx_failed_version`)
+- Check status dizini: `<project_dir>/status/` (default: `/opt/quadlet-rollout/status/`)
+  - Nginx: `<project_dir>/status/nginx/seen_version`
+  - Agent: `<project_dir>/status/agents/<user>/seen_version`
 - Certbot binary: `/usr/bin/certbot`
 - Renew hook: `/etc/letsencrypt/renewal-hooks/deploy/10-nginx-reload.sh`
 

@@ -8,6 +8,7 @@ cd /
 APP_USER="${APP_USER:-quadlet-rollout}"
 PROJECT_DIR="${PROJECT_DIR:-/opt/quadlet-rollout}"
 VERSION_FILE="${VERSION_FILE:-$PROJECT_DIR/global_version}"
+STATUS_DIR="${STATUS_DIR:-$PROJECT_DIR/status}"
 SHARED_REPO_NAME="${SHARED_REPO_NAME:-quadlet-nginx-shared-repo}"
 NGINX_ROLLOUT_REPO_URL="${NGINX_ROLLOUT_REPO_URL:-https://github.com/syntaxbender/quadlet-services.git}"
 NGINX_ROLLOUT_REPO_DIR="${NGINX_ROLLOUT_REPO_DIR:-$PROJECT_DIR/repos/$SHARED_REPO_NAME}"
@@ -19,6 +20,7 @@ NGINX_SITE_ENABLED_DIR="${NGINX_SITE_ENABLED_DIR:-/etc/nginx/sites-enabled}"
 NGINX_ROLLOUT_ACME_ROOT="${NGINX_ROLLOUT_ACME_ROOT:-/var/www/certbot}"
 NGINX_ROLLOUT_STATE_FILE="${NGINX_ROLLOUT_STATE_FILE:-$PROJECT_DIR/nginx_seen_version}"
 NGINX_ROLLOUT_FAILED_VERSION_FILE="${NGINX_ROLLOUT_FAILED_VERSION_FILE:-$PROJECT_DIR/nginx_failed_version}"
+NGINX_ROLLOUT_STATUS_FILE="${NGINX_ROLLOUT_STATUS_FILE:-$STATUS_DIR/nginx/seen_version}"
 NGINX_ROLLOUT_CERTBOT_BIN="${NGINX_ROLLOUT_CERTBOT_BIN:-/usr/bin/certbot}"
 NGINX_ROLLOUT_ENABLE_TIMER="${NGINX_ROLLOUT_ENABLE_TIMER:-y}"
 
@@ -90,9 +92,11 @@ collect_inputs() {
   NGINX_ROLLOUT_ENV_DIR="$PROJECT_DIR"
   NGINX_ROLLOUT_ENV_PATH="$NGINX_ROLLOUT_ENV_DIR/nginx-rollout.env"
   VERSION_FILE="$PROJECT_DIR/global_version"
+  STATUS_DIR="$PROJECT_DIR/status"
   NGINX_ROLLOUT_REPO_DIR="$PROJECT_DIR/repos/$SHARED_REPO_NAME"
   NGINX_ROLLOUT_STATE_FILE="$PROJECT_DIR/nginx_seen_version"
   NGINX_ROLLOUT_FAILED_VERSION_FILE="$PROJECT_DIR/nginx_failed_version"
+  NGINX_ROLLOUT_STATUS_FILE="$STATUS_DIR/nginx/seen_version"
 
   prompt_default NGINX_ROLLOUT_REPO_URL "Agent/Nginx ortak REPO_URL" "$NGINX_ROLLOUT_REPO_URL"
 
@@ -138,10 +142,12 @@ prepare_shared_repo_dir() {
 validate_inputs() {
   validate_absolute_path "$PROJECT_DIR"
   validate_absolute_path "$VERSION_FILE"
+  validate_absolute_path "$STATUS_DIR"
   validate_absolute_path "$NGINX_ROLLOUT_REPO_DIR"
   validate_absolute_path "$NGINX_ROLLOUT_ACME_ROOT"
   validate_absolute_path "$NGINX_ROLLOUT_STATE_FILE"
   validate_absolute_path "$NGINX_ROLLOUT_FAILED_VERSION_FILE"
+  validate_absolute_path "$NGINX_ROLLOUT_STATUS_FILE"
   validate_absolute_path "$NGINX_ROLLOUT_CERTBOT_BIN"
   validate_repo_relative_path "$NGINX_ROLLOUT_HTTP_DIR"
   validate_repo_relative_path "$NGINX_ROLLOUT_HTTPS_DIR"
@@ -181,6 +187,11 @@ install_nginx_rollout_agent() {
   install -d -m 0755 "$NGINX_ROLLOUT_ENV_DIR"
   install -d -m 0755 "$NGINX_ROLLOUT_ACME_ROOT/.well-known/acme-challenge"
   install -d -m 0755 "$(dirname "$NGINX_ROLLOUT_STATE_FILE")"
+  install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$STATUS_DIR" "$STATUS_DIR/nginx"
+  if [[ -f "$NGINX_ROLLOUT_STATE_FILE" ]]; then
+    install -m 0644 -o "$APP_USER" -g "$APP_USER" "$NGINX_ROLLOUT_STATE_FILE" "$NGINX_ROLLOUT_STATUS_FILE"
+    log "Mevcut nginx state ortak status alanına taşındı: $NGINX_ROLLOUT_STATUS_FILE"
+  fi
 
   cat >"$NGINX_ROLLOUT_ENV_PATH" <<EOF_INNER
 PROJECT_DIR=$PROJECT_DIR
@@ -195,6 +206,7 @@ NGINX_SITE_ENABLED_DIR=$NGINX_SITE_ENABLED_DIR
 ACME_CHALLENGE_ROOT=$NGINX_ROLLOUT_ACME_ROOT
 STATE_FILE=$NGINX_ROLLOUT_STATE_FILE
 FAILED_VERSION_FILE=$NGINX_ROLLOUT_FAILED_VERSION_FILE
+STATUS_FILE=$NGINX_ROLLOUT_STATUS_FILE
 CERTBOT_BIN=$NGINX_ROLLOUT_CERTBOT_BIN
 EOF_INNER
   chmod 0644 "$NGINX_ROLLOUT_ENV_PATH"

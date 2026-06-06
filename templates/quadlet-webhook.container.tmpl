@@ -9,6 +9,10 @@ ContainerName=quadlet-webhook
 PublishPort=127.0.0.1:{{WEBHOOK_LOCAL_PORT}}:8080
 Environment=SALT_SECRET={{SALT_SECRET}}
 Environment=VERSION_FILE=/data/global_version
+Environment=STATUS_DIR=/data/status
+Environment=NGINX_STATUS_FILE=/data/status/nginx/seen_version
+Environment=NGINX_FAILED_VERSION_FILE=/data/nginx_failed_version
+Environment=CHECK_TOKEN={{CHECK_TOKEN}}
 Environment=TZ=UTC
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1

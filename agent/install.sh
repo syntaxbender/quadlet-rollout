@@ -7,6 +7,7 @@ cd /
 APP_USER="${APP_USER:-quadlet-rollout}"
 PROJECT_DIR="${PROJECT_DIR:-/opt/quadlet-rollout}"
 VERSION_FILE="${VERSION_FILE:-$PROJECT_DIR/global_version}"
+STATUS_DIR="${STATUS_DIR:-$PROJECT_DIR/status}"
 AGENT_REPO_URL="${AGENT_REPO_URL:-https://github.com/syntaxbender/quadlet-services.git}"
 SHARED_REPO_NAME="${SHARED_REPO_NAME:-quadlet-nginx-shared-repo}"
 AGENT_REPO_DIR="${AGENT_REPO_DIR:-$PROJECT_DIR/repos/$SHARED_REPO_NAME}"
@@ -72,6 +73,7 @@ validate_absolute_path() {
 collect_inputs() {
   prompt_default PROJECT_DIR "Quadlet rollout project dizini" "$PROJECT_DIR"
   VERSION_FILE="$PROJECT_DIR/global_version"
+  STATUS_DIR="$PROJECT_DIR/status"
 
   prompt_default AGENT_REPO_URL "Agent/Nginx ortak REPO_URL" "$AGENT_REPO_URL"
   AGENT_REPO_DIR="$PROJECT_DIR/repos/$SHARED_REPO_NAME"
@@ -189,6 +191,7 @@ prepare_shared_repo_dir() {
 validate_inputs() {
   validate_absolute_path "$PROJECT_DIR"
   validate_absolute_path "$VERSION_FILE"
+  validate_absolute_path "$STATUS_DIR"
   validate_absolute_path "$AGENT_REPO_DIR"
   [[ "${#TARGET_USERS[@]}" -gt 0 ]] || die "Kurulacak Linux kullanıcı listesi boş olamaz"
 
@@ -217,18 +220,23 @@ prepare_global_version_file() {
     chmod 0644 "$VERSION_FILE"
   fi
 
+  install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$STATUS_DIR" "$STATUS_DIR/agents"
+
   log "Global version dosyası hazırlandı: $VERSION_FILE"
 }
 
 install_agent_for_user() {
   local user="$1"
   local uid home config_path linger_state enabled_state active_state
-  local lock_file
+  local lock_file status_user_dir status_file local_seen_file
 
   uid="$(id -u "$user")"
   home="$(getent passwd "$user" | cut -d: -f6)"
   [[ -n "$home" ]] || die "Home dizini okunamadı: $user"
   lock_file="$(dirname "$AGENT_REPO_DIR")/.quadlet-nginx-shared-repo.lock"
+  status_user_dir="$STATUS_DIR/agents/$user"
+  status_file="$status_user_dir/seen_version"
+  local_seen_file="$home/.local/state/quadlet-agent/seen_version"
 
   log "Agent kuruluyor: $user (uid=$uid home=$home)"
   loginctl enable-linger "$user"
@@ -257,6 +265,11 @@ install_agent_for_user() {
   install -d -m 0755 -o "$user" -g "$user" "$home/.local/bin"
   install -d -m 0755 -o "$user" -g "$user" "$home/.config/quadlet-agent"
   install -d -m 0755 -o "$user" -g "$user" "$home/.config/systemd/user"
+  install -d -m 2775 -o "$user" -g "$APP_USER" "$status_user_dir"
+  if [[ -f "$local_seen_file" ]]; then
+    install -m 0644 -o "$user" -g "$APP_USER" "$local_seen_file" "$status_file"
+    log "Mevcut agent state ortak status alanına taşındı: $status_file"
+  fi
 
   log "Agent script ve systemd user unit dosyaları kopyalanıyor"
   install -m 0755 -o "$user" -g "$user" \
@@ -271,6 +284,7 @@ install_agent_for_user() {
 GLOBAL_VERSION_FILE="$VERSION_FILE"
 REPO_URL="$AGENT_REPO_URL"
 REPO_DIR="$AGENT_REPO_DIR"
+STATUS_FILE="$status_file"
 EOF_INNER
   chown "$user:$user" "$config_path"
   chmod 0644 "$config_path"

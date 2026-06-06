@@ -240,6 +240,19 @@ clear_failed_version() {
   rm -f -- "$FAILED_VERSION_FILE"
 }
 
+write_version_file() {
+  local path="$1"
+  local version="$2"
+  local dir tmp
+
+  dir="$(dirname "$path")"
+  install -d -m 0755 "$dir"
+  tmp="$dir/.${path##*/}.$$"
+  printf '%s\n' "$version" > "$tmp"
+  chmod 0644 "$tmp"
+  mv -f -- "$tmp" "$path"
+}
+
 on_exit() {
   local rc=$?
 
@@ -471,6 +484,7 @@ main() {
 
   CERTBOT_BIN="${CERTBOT_BIN:-certbot}"
   FAILED_VERSION_FILE="${FAILED_VERSION_FILE:-$(dirname "$STATE_FILE")/nginx_failed_version}"
+  STATUS_FILE="${STATUS_FILE:-}"
   REPO_PARENT="$(dirname "$REPO_DIR")"
   REPO_LOCK_FILE="${REPO_LOCK_FILE:-$REPO_PARENT/.quadlet-nginx-shared-repo.lock}"
 
@@ -560,9 +574,11 @@ main() {
   activate_phase "http"
   activate_phase "https"
 
-  install -d -m 0755 "$(dirname "$STATE_FILE")"
   clear_failed_version
-  printf '%s\n' "$NEW_VERSION" > "$STATE_FILE"
+  write_version_file "$STATE_FILE" "$NEW_VERSION"
+  if [[ -n "$STATUS_FILE" ]]; then
+    write_version_file "$STATUS_FILE" "$NEW_VERSION"
+  fi
   TRACK_FAILED_VERSION=0
   trap - EXIT
   log "nginx rollout completed for version: $NEW_VERSION"
