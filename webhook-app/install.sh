@@ -37,6 +37,8 @@ CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 CERTBOT_CERT_NAME="${CERTBOT_CERT_NAME:-}"
 SALT_SECRET="${SALT_SECRET:-}"
 CHECK_TOKEN="${CHECK_TOKEN:-}"
+WEBHOOK_APPARMOR_PROFILE="${WEBHOOK_APPARMOR_PROFILE:-auto}"
+WEBHOOK_APPARMOR_PODMAN_ARGS="${WEBHOOK_APPARMOR_PODMAN_ARGS:-}"
 
 log() {
   printf '[INFO] %s\n' "$*"
@@ -190,6 +192,7 @@ validate_inputs() {
   [[ "$PROJECT_DIR" == /* ]] || die "PROJECT_DIR absolute path olmalı"
   [[ "$SALT_SECRET" =~ ^[A-Za-z0-9._-]+$ ]] || die "SALT_SECRET yalnızca [A-Za-z0-9._-] içermeli"
   [[ -z "$CHECK_TOKEN" || "$CHECK_TOKEN" =~ ^[A-Za-z0-9._-]+$ ]] || die "CHECK_TOKEN yalnızca [A-Za-z0-9._-] içermeli"
+  [[ "$WEBHOOK_APPARMOR_PROFILE" =~ ^[A-Za-z0-9._/-]+$ ]] || die "WEBHOOK_APPARMOR_PROFILE geçersiz formatta"
 
   if [[ "$CONFIGURE_NGINX" == "y" && "$NGINX_ENABLE_SSL" == "y" && "$NGINX_ACTIVATE_CONFIG" == "y" ]]; then
     [[ "$ACME_CHALLENGE_ROOT" == /* ]] || die "ACME_CHALLENGE_ROOT absolute path olmalı"
@@ -294,6 +297,51 @@ build_or_use_image() {
   podman build -t "$WEBHOOK_IMAGE" "$SCRIPT_DIR"
 }
 
+detect_webhook_apparmor_profile() {
+  local socket_test=(
+    podman run --rm
+    --security-opt=no-new-privileges
+    --entrypoint python3
+    "$WEBHOOK_IMAGE"
+    -c 'import socket; s=socket.socket(); s.bind(("0.0.0.0", 8080))'
+  )
+
+  case "$WEBHOOK_APPARMOR_PROFILE" in
+    auto)
+      if "${socket_test[@]}" >/dev/null 2>&1; then
+        WEBHOOK_APPARMOR_PODMAN_ARGS=""
+        log "Webhook AppArmor: varsayılan profil NoNewPrivileges ile uyumlu."
+        return 0
+      fi
+
+      if podman run --rm \
+        --security-opt=no-new-privileges \
+        --security-opt=apparmor=unconfined \
+        --entrypoint python3 \
+        "$WEBHOOK_IMAGE" \
+        -c 'import socket; s=socket.socket(); s.bind(("0.0.0.0", 8080))' >/dev/null 2>&1; then
+        WEBHOOK_APPARMOR_PODMAN_ARGS="PodmanArgs=--security-opt=apparmor=unconfined"
+        warn "Varsayılan AppArmor profili NoNewPrivileges ile socket açmayı engelliyor."
+        warn "NoNewPrivileges=true korunuyor; webhook için apparmor=unconfined eklenecek."
+        return 0
+      fi
+
+      die "Webhook socket testi NoNewPrivileges ile başarısız. AppArmor unconfined ile de düzelmedi."
+      ;;
+    default)
+      WEBHOOK_APPARMOR_PODMAN_ARGS=""
+      ;;
+    unconfined)
+      WEBHOOK_APPARMOR_PODMAN_ARGS="PodmanArgs=--security-opt=apparmor=unconfined"
+      warn "WEBHOOK_APPARMOR_PROFILE=unconfined seçildi. NoNewPrivileges=true korunur, AppArmor confinement uygulanmaz."
+      ;;
+    *)
+      WEBHOOK_APPARMOR_PODMAN_ARGS="PodmanArgs=--security-opt=apparmor=$WEBHOOK_APPARMOR_PROFILE"
+      log "Webhook AppArmor profili kullanılacak: $WEBHOOK_APPARMOR_PROFILE"
+      ;;
+  esac
+}
+
 write_webhook_quadlet() {
   log "Webhook quadlet unit yazılıyor: $WEBHOOK_UNIT_PATH"
   install -d -m 0755 /etc/containers/systemd
@@ -305,7 +353,8 @@ write_webhook_quadlet() {
     "SALT_SECRET=$SALT_SECRET" \
     "CHECK_TOKEN=$CHECK_TOKEN" \
     "TOKEN_TOLERANCE_MINUTES=$TOKEN_TOLERANCE_MINUTES" \
-    "VERSION_DIR=$VERSION_DIR"
+    "VERSION_DIR=$VERSION_DIR" \
+    "WEBHOOK_APPARMOR_PODMAN_ARGS=$WEBHOOK_APPARMOR_PODMAN_ARGS"
 
   chmod 0644 "$WEBHOOK_UNIT_PATH"
   systemctl daemon-reload
@@ -450,6 +499,7 @@ main() {
   ensure_service_user
   prepare_version_file
   build_or_use_image
+  detect_webhook_apparmor_profile
   write_webhook_quadlet
   write_nginx_site
 

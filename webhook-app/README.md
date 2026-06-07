@@ -31,6 +31,18 @@ Script interaktif olarak en az şu alanları sorar:
 
 Installer her çalışmada `<project_dir>` ve `<project_dir>/global_version` izinlerini tekrar normalize eder (`quadlet-rollout:quadlet-rollout`, `0755/0644`).
 
+Installer ayrıca webhook imajını `NoNewPrivileges=true` ile kısa bir socket testiyle doğrular.
+Bazı Ubuntu/Podman/AppArmor kombinasyonlarında varsayılan AppArmor profili `NoNewPrivileges` aktifken socket oluşturmayı engelleyebilir.
+Bu durumda installer `NoNewPrivileges=true` değerini korur ve yalnızca webhook container için `apparmor=unconfined` Podman argümanını ekler.
+
+İstersen davranışı override edebilirsin:
+
+```bash
+sudo WEBHOOK_APPARMOR_PROFILE='default' ./webhook-app/install.sh
+sudo WEBHOOK_APPARMOR_PROFILE='unconfined' ./webhook-app/install.sh
+sudo WEBHOOK_APPARMOR_PROFILE='custom-profile-name' ./webhook-app/install.sh
+```
+
 ## Durum Kontrolü
 
 Webhook `GET /check` endpoint'i global version, nginx rollout son başarılı hash'i ve user agent son başarılı hash'lerini JSON döner:

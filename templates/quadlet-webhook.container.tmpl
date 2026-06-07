@@ -21,6 +21,7 @@ Environment=MAX_HEADER_VALUE_LEN=128
 Volume={{VERSION_DIR}}:/data:Z
 NoNewPrivileges=true
 ReadOnly=true
+{{WEBHOOK_APPARMOR_PODMAN_ARGS}}
 
 [Service]
 Restart=always
