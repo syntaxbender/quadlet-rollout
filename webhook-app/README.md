@@ -116,3 +116,9 @@ sudo ./webhook-app/install.sh
 
 - Bu hata, service-level `ReadWritePaths=/data` gibi host path ile container path'in karışmasından kaynaklanır.
 - Güncel template bu ayarı içermez; installer'ı tekrar çalıştırarak unit'i yeniden üret.
+
+`failed to find plugin "bridge"/"portmap"/"firewall"/"tuning"` görürsen:
+
+- Bu rootful Podman bridge CNI pluginlerinin eksik olduğunu gösterir.
+- `PublishPort=127.0.0.1:18080:8080` için CNI backend kullanılıyorsa `containernetworking-plugins` paketi gerekir.
+- Sunucuda `sudo apt install -y containernetworking-plugins` çalıştırıp installer'ı tekrar çalıştır.
